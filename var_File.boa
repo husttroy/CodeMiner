@@ -1,0 +1,30 @@
+Refs: output collection[string] of string;
+p:Project = input;
+
+cur_file: string;
+cur_method: string;
+
+visit(p, visitor {
+    # only look at the latest snapshot
+    before node: CodeRepository -> {
+        # ignore projects with less than 100 revisions
+        if (len(node.revisions) < 100) stop;
+        
+        snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
+        foreach (i: int; def(snapshot[i]))
+			visit(snapshot[i]);
+		stop;
+    }
+    # record the current file
+    before node: ChangedFile -> cur_file = node.name;
+    
+    # record the method name
+    before node: Method -> cur_method = node.name;
+    
+    # check variable declarations 
+    before node: Variable -> {
+        if(node.variable_type.name == "File"){
+            Refs[p.id] << format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_method, node.name);
+        }
+    }
+});
