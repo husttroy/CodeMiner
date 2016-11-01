@@ -1,0 +1,34 @@
+# Small dataset: 35s
+# Medium dataset: 1m 57s
+# Large dataset: 
+count: output sum[string] of int;
+p:Project = input;
+
+cnt := 0;
+
+visit(p, visitor {
+    # only look at the latest snapshot
+    before node: CodeRepository -> {
+        # ignore projects with less than 100 revisions
+        if (len(node.revisions) < 100) stop;
+        
+        snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
+        foreach (i: int; def(snapshot[i]))
+			visit(snapshot[i]);
+		stop;
+    }
+    
+    # check variable declarations 
+    before node: Variable -> {
+        if(node.variable_type.name == "File"){
+            cnt++;
+        }
+    }
+    
+    # output
+    after node:Project -> {
+        if(cnt > 0){
+            count[p.project_url] << cnt;
+        }
+    }
+});
