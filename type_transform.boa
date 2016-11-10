@@ -6,34 +6,45 @@ cur_file: string;
 cur_class: string;
 cur_method: string;
 
-# referenced types in a method
-types: set of string;
-# referenced apis in a method
-apis: set of string;
-
 # symbol table for fields
 field_table: map[string] of string;
 
-# symbol table for local variables and arguments
-local_table: map[string] of string;
-
 traverse_method := function(m: Method) {
+    key := format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
+    
+    # symbol table for local variables and arguments
+    local_table: map[string] of string;
+    
+    stts: string = "";
+    
+    # arguments
+    foreach (i: int; def(m.arguments[i])){
+        arg := m.arguments[i];
+        local_table[arg.name] = arg.variable_type.name;
+    }
+    
     visit(m, visitor{
-        # local variables or arguments
-        before node: Variable -> {
-            local_table[node.name] = node.variable_type.name;
-        }
-                        
-        # statements
-        before node: Statement -> {    
+        before node: Expression -> {
+            if (node.kind == ExpressionKind.ASSIGN) {
+                if(stts != "") {
+                    stts = format("%s;;;%s", stts, node);    
+                }else{
+                    stts = format("%s;;;", node);    
+                }
+            }
         }
     });
-                    
-    clear(local_table);
+    
+    trans[key] << stts;
 };
 
 # check whether a method matches a query about creating new file
 query := function(m: Method) : bool{
+    # referenced types in a method
+    types: set of string;
+    # referenced apis in a method
+    apis: set of string;
+    
     visit(m, visitor{
         before node: Variable -> add(types, node.variable_type.name);
         
@@ -48,8 +59,6 @@ query := function(m: Method) : bool{
     if (contains(types, "File") && contains(apis, "createNewFile")) flag = true;
     else flag = false;
     
-    clear(types);
-    clear(apis);
     return flag;
 };
 
@@ -85,8 +94,10 @@ visit(p, visitor {
                     m := node.methods[i];
                     cur_method = m.name;
                     
-                    if (query(m)) trans[p.id] << format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
-                    #traverse_method(m);
+                    if (query(m)) {
+                        #trans[p.id] << format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
+                        traverse_method(m);
+                    }
                 }
             }
             
