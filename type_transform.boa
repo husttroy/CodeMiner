@@ -8,12 +8,92 @@ cur_method: string;
 
 # symbol table for fields
 field_table: map[string] of string;
+    
+# symbol table for local variables and arguments
+local_table: map[string] of string;
+
+# resolve the type of a variable by looking up to the symbol tables
+resolve_var_type := function(v: string): string {
+    t : string;
+    
+    if (haskey(local_table, v)) {
+        t = local_table[v];
+    } if (haskey(field_table, v)) {
+        t = field_table[v];
+    } else {
+        t = format("%s %s", "unknown:", v); # error-variable name should have been resolved
+    }
+    
+    return t;
+};
+
+# get types of arguments
+get_args := function(arr: array of Expression) : string{
+    args := "(";
+    foreach (i: int; def(arr[i])) {
+        args = format("%s,", get_type(arr[i]));
+    }
+    
+    return format("%s)", args);
+};
+
+get_constructor := function(expr: Expression) : string {
+    api_name := expr.new_type.name;
+    if (def(expr.expressions)) {
+        api_args := get_args(expr.expressions);
+    }
+    
+    return format("new %s%s", api_name, api_args); 
+};
+
+# get types in a method call
+get_method_call := function(expr: Expression) : string {
+    api_name := expr.method;
+                    
+    api_args := get_args(expr.method_args); 
+                    
+    return format("%s%s", api_name, api_args);
+};
+
+get_type := function(expr: Expression) : string {
+    t : string;
+    switch(expr.kind) {
+        case ExpressionKind.VARACCESS:
+            t = resolve_var_type(expr.variable);
+            break;
+        case ExpressionKind.LITERAL:
+            if (expr.literal == "true" || expr.literal == "false"){
+                t = "boolean";
+            } else if (match(`^\\\"(.)*\\\"$`, expr.literal)) {
+                t = "String";
+            } else if (match(`\d+`, expr.literal)) {
+                t = "int";
+            } else if (expr.literal == "null") {
+                t = "null";
+            } else if (expr.literal == "this") {
+                t = cur_class;
+            } else {
+                t = format("%s %s", "unknown:", expr.literal);
+            }
+            break;
+        case ExpressionKind.METHODCALL:
+            #TODO: resolve local method call
+            #TODO: delegate api resolutation to external program analysis
+            t = get_method_call(expr);
+            break;
+        case ExpressionKind.NEW:
+            t = get_constructor(expr);
+            break;
+        default:
+            t = format("%s %s", "unknown:", expr);
+            break;
+    }
+    
+    return t;
+};
 
 traverse_method := function(m: Method) {
     key := format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
-    
-    # symbol table for local variables and arguments
-    local_table: map[string] of string;
     
     stts: string = "";
     
@@ -24,18 +104,33 @@ traverse_method := function(m: Method) {
     }
     
     visit(m, visitor{
+        before node: Variable -> {
+            local_table[node.name] = node.variable_type.name;
+            
+            if(def(node.initializer)){
+                left_hand := node.variable_type.name;
+                right_hand := get_type(node.initializer);
+                stts = format("%s||%s<-%s", stts, left_hand, right_hand);
+            }
+        }
+        
         before node: Expression -> {
-            if (node.kind == ExpressionKind.ASSIGN) {
-                if(stts != "") {
-                    stts = format("%s;;;%s", stts, node);    
-                }else{
-                    stts = format("%s;;;", node);    
+            if (node.kind == ExpressionKind.ASSIGN 
+                    && def(node.expressions) 
+                    && len(node.expressions) == 2) {
+                        
+                if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
+                    v := node.expression[0];
+                    
+                    stts = format("%s||%s <- %s", stts, resolve_var_type(v.name), get_type(node.expression[1]));
                 }
             }
         }
     });
     
     trans[key] << stts;
+    
+    clear(local_table);
 };
 
 # check whether a method matches a query about creating new file
