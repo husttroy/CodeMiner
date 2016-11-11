@@ -1,0 +1,140 @@
+# type transformations for each method
+p:Project = input;
+trans: output collection[string] of string;
+
+cur_file: string;
+cur_class: string;
+cur_method: string;
+
+# symbol table for fields
+field_table: map[string] of string;
+    
+# symbol table for local variables and arguments
+local_table: map[string] of string;
+
+traverse_method := function(m: Method) {
+    key := format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
+    
+    stts: string = "";
+    
+    # arguments
+    foreach (i: int; def(m.arguments[i])){
+        arg := m.arguments[i];
+        local_table[arg.name] = arg.variable_type.name;
+    }
+    
+    st : stack of string;
+    visit(m, visitor{
+        before node: Expression -> {
+            if (node.kind == ExpressionKind.METHODCALL) {
+		        if (def(node.expressions) && len(node.expressions) == 1) {
+		            if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
+		    	        # first method call
+		    	        stts = format("%s||%s", stts, node.method);
+			            # append the rest of method calls in the sequence, if any
+		    	        while (def(peek(st))) {
+			                # method call sequence
+			                stts = format("%s.%s", stts, pop(st));
+		    	        }
+			            # do not visit other nodes such as arguments
+			            stop;
+		            } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
+                    	# this is a sequence of method calls
+			            push(st, node.method);
+			            # only visit the following method call(s)
+			            visit(node.expressions[0]);
+			            # do not visit other nodes such as arguments
+			            stop;
+		            }
+		        } else if (!def(node.expressions)) {
+		            # local method call
+		            stts = format("%s||%s", stts, node.method);
+		            # append the rest of method calls in the sequence, if any
+		            while (def(peek(st))) {
+			            # method call sequence
+			            stts = format("%s.%s", stts, pop(st));
+		            }
+		            # do not visit other nodes such as arguments
+		            stop;
+		        }
+            } else if (node.kind == ExpressionKind.NEW) {
+                stts = format("%s||%s", stts, node.new_type.name);
+            }
+        }
+    });
+    
+    trans[key] << stts;
+    
+    clear(local_table);
+};
+
+# check whether a method matches a query about creating new file
+query := function(m: Method) : bool{
+    # referenced types in a method
+    types: set of string;
+    # referenced apis in a method
+    apis: set of string;
+    
+    visit(m, visitor{
+        before node: Variable -> add(types, node.variable_type.name);
+        
+        before node: Expression -> {
+            if (node.kind == ExpressionKind.METHODCALL) {
+                add(apis, node.method);
+            }
+        }
+    });
+    
+    flag: bool;
+    if (contains(types, "File") && contains(apis, "createNewFile")) flag = true;
+    else flag = false;
+    
+    return flag;
+};
+
+
+visit(p, visitor {
+    # only look at the latest snapshot
+    before node: CodeRepository -> {
+        # ignore projects with less than 100 revisions
+        if (len(node.revisions) < 100) stop;
+        
+        snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
+        foreach (i: int; def(snapshot[i]))
+			visit(snapshot[i]);
+		stop;
+    }
+    
+    # record the current file
+    before node: ChangedFile -> {
+        cur_file = node.name;
+        visit(node, visitor{
+            
+            # visit class declaration
+            before node: Declaration -> {
+                # record the class name
+                cur_class = node.name;
+                
+                foreach(i: int; def(node.fields[i])){
+                    f := node.fields[i];
+                    field_table[f.name] = f.variable_type.name; # store the type of fields
+                }
+                
+                foreach(i: int; def(node.methods[i])){
+                    m := node.methods[i];
+                    cur_method = m.name;
+                    
+                    if (query(m)) {
+                        #trans[p.id] << format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
+                        traverse_method(m);
+                    }
+                }
+            }
+            
+            # clear field table just in case there are nested class declarations
+            after node: Declaration -> {
+                clear(field_table);
+            }
+        });
+    }
+});
