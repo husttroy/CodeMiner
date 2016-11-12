@@ -24,41 +24,69 @@ traverse_method := function(m: Method) {
     }
     
     st : stack of string;
+    isPredicate := false;
     visit(m, visitor{
+        before node: Statement -> {
+            if (node.kind == StatementKind.IF && def(node.expression)) {
+                # visit if predicate first
+                isPredicate = true;
+                stts = format("%s||IF(", stts);
+                visit(node.expression);
+                stts = format("%s){", stts);
+                isPredicate = false;
+                
+                foreach (i: int; def(node.statements[i])) {
+                    visit(node.statements[i]);
+                }
+            
+                stts = format("%s}", stts);
+                stop;
+            }
+        }
+        
         before node: Expression -> {
-            if (node.kind == ExpressionKind.METHODCALL) {
-		        if (def(node.expressions) && len(node.expressions) == 1) {
-		            if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
-		    	        # first method call
-		    	        stts = format("%s||%s", stts, node.method);
-			            # append the rest of method calls in the sequence, if any
-		    	        while (def(peek(st))) {
+            switch (node.kind) {
+                case ExpressionKind.METHODCALL:
+		            if (def(node.expressions) && len(node.expressions) == 1) {
+		                if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
+		    	            # first method call
+		    	            stts = format("%s||%s", stts, node.method);
+			                # append the rest of method calls in the sequence, if any
+		    	            while (def(peek(st))) {
+			                    # method call sequence
+			                    stts = format("%s.%s", stts, pop(st));
+		    	            }
+			                # do not visit other nodes such as arguments
+			                stop;
+		                } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
+                    	    # this is a sequence of method calls
+			                push(st, node.method);
+			                # only visit the following method call(s)
+			                visit(node.expressions[0]);
+			                # do not visit other nodes such as arguments
+			                stop;
+		                }
+		            } else if (!def(node.expressions)) {
+		                # local method call
+		                stts = format("%s||%s", stts, node.method);
+		                # append the rest of method calls in the sequence, if any
+		                while (def(peek(st))) {
 			                # method call sequence
 			                stts = format("%s.%s", stts, pop(st));
-		    	        }
-			            # do not visit other nodes such as arguments
-			            stop;
-		            } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
-                    	# this is a sequence of method calls
-			            push(st, node.method);
-			            # only visit the following method call(s)
-			            visit(node.expressions[0]);
-			            # do not visit other nodes such as arguments
-			            stop;
+		                }
+		                # do not visit other nodes such as arguments
+		                stop;
 		            }
-		        } else if (!def(node.expressions)) {
-		            # local method call
-		            stts = format("%s||%s", stts, node.method);
-		            # append the rest of method calls in the sequence, if any
-		            while (def(peek(st))) {
-			            # method call sequence
-			            stts = format("%s.%s", stts, pop(st));
-		            }
-		            # do not visit other nodes such as arguments
-		            stop;
-		        }
-            } else if (node.kind == ExpressionKind.NEW) {
-                stts = format("%s||%s", stts, node.new_type.name);
+		            break;
+                case ExpressionKind.NEW:
+                    stts = format("%s||%s", stts, node.new_type.name);
+                    break;
+                case ExpressionKind.LOGICAL_NOT:
+                    if (isPredicate) {
+                        stts = format("%s!", stts); 
+                    }
+                    break;
+                default: break;
             }
         }
     });
