@@ -48,11 +48,146 @@ query := function(m: Method) : bool{
     return true;
 };
 
-# symbol table for fields
+# symbol table for fields : var -> type
 field_table: map[string] of string;
     
-# symbol table for local variables and arguments
+# symbol table for local variables and arguments : var -> type
 local_table: map[string] of string;
+
+# call-on table : var -> m1||m2||m3
+callOn: map[string] of string;
+
+# call-on-rev table : method call -> v1,v2,v3
+revCallOn: map[string] of string;
+
+# dataflow table : var -> v1,v2,v3
+dataflow: map[string] of string;
+
+# method call ordering : m1||m2.m3||m4(m5)
+order: string;
+
+# predicates : method call -> p1*p2*p3
+predicate: map[string] of string;
+
+get_predicate := function(expr: Expression) : string {
+    cond := "";
+    st : stack of string;
+    
+    visit(expr, visitor{
+        before node: Expression -> {
+            switch (node.kind) {
+                case ExpressionKind.METHODCALL:
+                    if (def(node.expressions) && len(node.expressions) == 1) {
+		                if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
+		    	            # first method call
+		    	            cond = format("%s%s.%s", cond, node.expressions[0].variable, node.method);
+			                # append the rest of method calls in the sequence, if any
+		    	            while (def(peek(st))) {
+			                    # method call sequence
+			                    cond = format("%s.%s", cond, pop(st));
+		    	            }
+			                # do not visit other nodes such as arguments and receiver
+			                stop;
+		                } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
+                    	    # this is a sequence of method calls
+			                push(st, node.method);
+			                # only visit the following method call(s)
+			                visit(node.expressions[0]);
+			                # do not visit other nodes such as arguments
+			                stop;
+		                }
+		            } else if (!def(node.expressions)) {
+		                # local method call
+		                cond = format("%s%s", cond, node.method);
+		                # append the rest of method calls in the sequence, if any
+		                while (def(peek(st))) {
+			                # method call sequence
+			                cond = format("%s.%s", cond, pop(st));
+		                }
+		                # do not visit other nodes such as arguments
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.LOGICAL_NOT:
+		            cond = format("%s!", cond);
+		            break;
+		        case ExpressionKind.VARACCESS:
+		            cond = format("%s%s", cond, node.variable);
+		            break;
+		        case ExpressionKind.LITERAL:
+		            cond = format("%s%s", cond, node.literal);
+		            break;
+		        case ExpressionKind.LOGICAL_AND:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s && ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.LOGICAL_OR:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s || ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.EQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s == ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.LT:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s < ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.LTEQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s <= ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.NEQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s != ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.GT:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s > ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.GTEQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s >= ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        default: break;
+            }
+        }
+    });
+    
+    return cond;
+};
 
 traverse_method := function(m: Method) {
     key := format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
@@ -68,13 +203,22 @@ traverse_method := function(m: Method) {
     st : stack of string;
     isPredicate := false;
     visit(m, visitor{
+        before node: Variable -> {
+            local_table[node.name] = node.variable_type.name;
+            
+            if(def(node.initializer)){
+                # do something
+            }
+        }
+        
         before node: Statement -> {
             if (node.kind == StatementKind.IF && def(node.expression)) {
                 # visit if predicate first
                 isPredicate = true;
-                stts = format("%s||IF(", stts);
-                visit(node.expression);
-                stts = format("%s){", stts);
+                #stts = format("%s||IF(", stts);
+                #visit(node.expression);
+                #stts = format("%s){", stts);
+                stts = format("%s||IF(%s){", stts, get_predicate(node.expression));
                 isPredicate = false;
                 
                 foreach (i: int; def(node.statements[i])) {
