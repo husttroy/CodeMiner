@@ -1,0 +1,110 @@
+p: Project = input;
+############## IMPORTANT
+############## ADD OUTPUT ONCE YOU KNOW WHERE THE MICROCLONES ARE
+##############
+
+files: map[string] of ChangedFile;
+
+
+cur_file: string;
+cur_class: string;
+cur_method: string;
+
+api_query : array of string;
+api_query = {"createNewFile"};
+
+type_query : array of string;
+type_query : {"File"};
+
+
+# A little wasteful with memory, but you need set's contain method and the ability to iterate through a stack.
+old_method_set : set of string;
+old_method_stack : stack of string;
+new_method_set : set of string;
+new_method_stack : stack of string;
+
+
+
+find_methods := function(root: ASTRoot, target_set: set of string, target_stack: stack of string){
+	visit(root, visitor{
+		before node: Expression -> {
+			if (node.kind == ExpressionKind.METHODCALL) {
+				add(target_set, node.method);
+				push(target_stack, node.method);
+			}
+		}
+	});
+}
+
+
+# Stack A - Set B, output to Stack C and Set D.
+# Stack C will contain all methods A but not B.
+get_difference := function(A: stack of string, B: set of string, C: stack of string, D: set of string)
+{
+	while (def(peek(A))){
+		curr_string : string;
+		curr_string := pop(A);
+
+		if(!contains(B, curr_string))
+		{
+			push(C, curr_string);
+			add(D, curr_string);
+		}
+	}
+}
+
+
+# Given a stack and a set of method calls, determine if there are microclones
+has_microclones := function(calls_stack: stack of string, calls_set: set of string) : bool
+{
+	
+}
+
+
+
+visit(p, visitor {
+	before node: CodeRepository -> {
+		if (len(node.revisions) < 100) stop;
+
+		snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
+		foreach (i: int; def(snapshot[i]))
+			visit (snapshot[i]);
+		stop;
+	}
+
+	before node: Revision
+
+	before node: ChangedFile -> {
+		# see if there were previous versions of the file
+		if(haskey(files, node.name)) {
+			# visit older snapshot and get the set of method calls.
+			find_methods(getast(files[node.name]), old_method_set, old_method_stack);
+
+			# visit newer snapshot and get the set of method calls.
+			find_methods(getast(node), new_method_set, new_method_stack);
+		}	
+		if (node.change == ChangeKind.DELETED)
+			remove(files, node.name);
+		else
+			files[node.name] = node;
+		
+
+		# Finding differences between the methods in the two versions
+		only_old_stack : stack of string;
+		only_old_set : set of string;
+		only_new_stack : stack of string;
+		only_new_set : set of string;
+		get_difference(old_method_stack, new_method_set, only_old_stack, only_old_set);
+		get_difference(new_method_stack, old_method_set, only_new_stack, only_old_set);
+		stop;
+
+	}
+});
+
+
+
+
+
+
+
+
