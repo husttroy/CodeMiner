@@ -54,6 +54,9 @@ field_table: map[string] of string;
 # symbol table for local variables and arguments : var -> type
 local_table: map[string] of string;
 
+# assignment mapping, record the data flow
+assign: map[string] of string;
+
 # call-on table : var -> m1||m2||m3
 callOn: map[string] of string;
 
@@ -69,8 +72,10 @@ order: string;
 # predicates : method call -> p1*p2*p3
 predicate: map[string] of string;
 
-get_predicate := function(expr: Expression) : string {
-    cond := "";
+
+# takes a method call expression and return a method call sequnce in the format of m1.m2.m3...
+get_method_seq := function(expr: Expression) : string {
+    seq: = "";
     st : stack of string;
     
     visit(expr, visitor{
@@ -80,11 +85,11 @@ get_predicate := function(expr: Expression) : string {
                     if (def(node.expressions) && len(node.expressions) == 1) {
 		                if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
 		    	            # first method call
-		    	            cond = format("%s%s.%s", cond, node.expressions[0].variable, node.method);
+		    	            seq = node.method;
 			                # append the rest of method calls in the sequence, if any
 		    	            while (def(peek(st))) {
-			                    # method call sequence
-			                    cond = format("%s.%s", cond, pop(st));
+			                    # method call sequence			                    
+			                    seq = format("%s.%s", seq, pop(st));
 		    	            }
 			                # do not visit other nodes such as arguments and receiver
 			                stop;
@@ -98,15 +103,45 @@ get_predicate := function(expr: Expression) : string {
 		                }
 		            } else if (!def(node.expressions)) {
 		                # local method call
-		                cond = format("%s%s", cond, node.method);
+		                seq = node.method;
 		                # append the rest of method calls in the sequence, if any
 		                while (def(peek(st))) {
 			                # method call sequence
-			                cond = format("%s.%s", cond, pop(st));
+			                seq = format("%s.%s", seq, pop(st));
 		                }
 		                # do not visit other nodes such as arguments
 		                stop;
 		            }
+		            break;
+		        case ExpressionKind.NEW:
+		            # constructer is either called first or called as an argument (ignore argument for now)
+		            seq = format("new %s", node.new_type.name);
+		            
+		            while (def(peek(st))) {
+		                seq = format("%s.%s", seq, pop(st));
+		            }
+		            
+                    stop;
+                default: break;
+            }
+        }
+    });
+    
+    return seq;
+};
+
+get_predicate := function(expr: Expression) : string {
+    cond := "";
+    st : stack of string;
+    
+    visit(expr, visitor{
+        before node: Expression -> {
+            switch (node.kind) {
+                case ExpressionKind.METHODCALL:
+                    cond = format("%s%s", cond, get_method_seq(node));
+		            stop;
+		        case ExpressionKind.NEW:
+		            cond = format("%s%s", cond, get_method_seq(node));
 		            break;
 		        case ExpressionKind.LOGICAL_NOT:
 		            cond = format("%s!", cond);
@@ -207,7 +242,8 @@ traverse_method := function(m: Method) {
             local_table[node.name] = node.variable_type.name;
             
             if(def(node.initializer)){
-                # do something
+                # assignment mapping
+                
             }
         }
         
@@ -233,39 +269,10 @@ traverse_method := function(m: Method) {
         before node: Expression -> {
             switch (node.kind) {
                 case ExpressionKind.METHODCALL:
-		            if (def(node.expressions) && len(node.expressions) == 1) {
-		                if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
-		    	            # first method call
-		    	            stts = format("%s||%s", stts, node.method);
-			                # append the rest of method calls in the sequence, if any
-		    	            while (def(peek(st))) {
-			                    # method call sequence
-			                    stts = format("%s.%s", stts, pop(st));
-		    	            }
-			                # do not visit other nodes such as arguments
-			                stop;
-		                } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
-                    	    # this is a sequence of method calls
-			                push(st, node.method);
-			                # only visit the following method call(s)
-			                visit(node.expressions[0]);
-			                # do not visit other nodes such as arguments
-			                stop;
-		                }
-		            } else if (!def(node.expressions)) {
-		                # local method call
-		                stts = format("%s||%s", stts, node.method);
-		                # append the rest of method calls in the sequence, if any
-		                while (def(peek(st))) {
-			                # method call sequence
-			                stts = format("%s.%s", stts, pop(st));
-		                }
-		                # do not visit other nodes such as arguments
-		                stop;
-		            }
+		            stts = format("%s||%s", stts, get_method_seq(node));
 		            break;
                 case ExpressionKind.NEW:
-                    stts = format("%s||%s", stts, node.new_type.name);
+                    stts = format("%s||%s", stts, get_method_seq(node));
                     break;
                 case ExpressionKind.LOGICAL_NOT:
                     if (isPredicate) {
