@@ -1,0 +1,119 @@
+# type transformations for each method
+p:Project = input;
+fields: output collection[string] of string;
+locals: output collection[string] of string;
+
+cur_file: string;
+cur_class: string;
+cur_method: string;
+
+# API query
+api_query : array of string;
+api_query = {"createNewFile"};
+
+# type query
+type_query : array of string;
+type_query = {"File"};
+
+# a coarse-grained query methodology based on a given set of types and apis
+query := function(m: Method) : bool{
+    # referenced types in a method
+    types: set of string;
+    # referenced apis in a method
+    apis: set of string;
+    
+    visit(m, visitor{
+        before node: Variable -> add(types, node.variable_type.name);
+        
+        before node: Expression -> {
+            if (node.kind == ExpressionKind.METHODCALL) {
+                add(apis, node.method);
+            }
+        }
+    });
+    
+    # API query
+    foreach(i : int; def(api_query[i])) {
+        if (!contains(apis, api_query[i])) {
+            return false;
+        }
+    }
+    
+    # type query
+    foreach(i : int; def(type_query[i])) {
+        if (!contains(types, type_query[i])) {
+            return false;
+        }
+    }
+    
+    return true;
+};
+
+visit(p, visitor {
+    # only look at the latest snapshot
+    before node: CodeRepository -> {
+        # ignore projects with less than 100 revisions
+        if (len(node.revisions) < 100) stop;
+        
+        snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
+        foreach (i: int; def(snapshot[i]))
+			visit(snapshot[i]);
+		stop;
+    }
+    
+    # record the current file
+    before node: ChangedFile -> {
+        cur_file = node.name;
+        visit(node, visitor{
+            
+            # visit class declaration
+            before node: Declaration -> {
+                # record the class name
+                cur_class = node.name;
+                
+                flag := false;
+                foreach (i: int; def(node.methods[i])){
+                    m := node.methods[i];
+                    cur_method = m.name;
+                    
+                    if (query(m)) {
+                        if (!flag) flag = true;
+                        
+                        local_table: map[string] of string;
+                        visit(m, visitor {
+                            before node: Variable -> {
+                                # TODO: handle overshadowing
+                                local_table[node.name] = node.variable_type.name; 
+                            }
+                        });
+                        
+                        mkey := format("%s * %s * %s * %s", p.project_url, cur_file, cur_class, cur_method);
+                        ks := keys(local_table);
+                        ls := "";
+                        foreach (j: int; def(ks[j])) {
+                            v := ks[j];
+                            typ := local_table[v];
+                            ls = format("%s|%s:%s", ls, v, typ);
+                        }
+                        
+                        # emit local variables declared in each method
+                        locals[mkey] << ls;
+                    }
+                }
+                
+                if (flag) {
+                    # emit fields declared in the class
+                    key := format("%s * %s * %s", p.project_url, cur_file, cur_class);
+                    fs := "";
+                    
+                    foreach (i: int; def(node.fields[i])){
+                        f := node.fields[i];
+                        fs = format("%s|%s:%s", fs, f.name, f.variable_type.name);
+                    }
+                    
+                    fields[key] << fs; 
+                }
+            }
+        });
+    }
+});
