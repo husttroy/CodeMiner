@@ -147,45 +147,61 @@ traverse_method := function(m: Method) {
     
     visit(m, visitor{
         before node: Statement -> {
-            if (node.kind == StatementKind.IF && def(node.expression)) {
-                # visit if predicate first
-                visit(node.expression);
+            switch (node.kind) {
+                case StatementKind.IF:
+                    visit(node.expression);
                 
-                foreach (i: int; def(node.statements[i])) {
-                    if (i == 0) {
-                        # visit if branch
-                        stts = format("%s->IF {", stts);
-                        visit(node.statements[0]);
-                        stts = format("%s}", stts);
-                    } else if (i == 1) {
-                        # visit else branch
-                        stts = format("%s ELSE {", stts);
-                        visit(node.statements[1]);
-                        stts = format("%s}", stts);
-                    } else {
-                        # can this even happen? visit silently
-                        seqs[key] << "Error: third branch";
+                    foreach (i: int; def(node.statements[i])) {
+                        if (i == 0) {
+                            # visit if branch
+                            stts = format("%s->IF {", stts);
+                            visit(node.statements[0]);
+                            stts = format("%s}", stts);
+                        } else if (i == 1) {
+                            # visit else branch
+                            stts = format("%s ELSE {", stts);
+                            visit(node.statements[1]);
+                            stts = format("%s}", stts);
+                        } else {
+                            # can this even happen? visit silently
+                            seqs[key] << "Error: third branch";
+                            visit(node.statements[i]);
+                        }
+                    }
+                
+                    # no need to visit other elements in the if statement
+                    stop;
+                case StatementKind.TRY:
+                    foreach (i: int; def(node.statements[i])) {
+                        if (i == 0) {
+                            # visit try block
+                            stts = format("%s->TRY {", stts);
+                            visit(node.statements[0]);
+                            stts = format("%s}", stts);
+                        } else {
+                            # visit catch block, multiple catch? not sure.
+                            stts = format("%s CATCH {", stts);
+                            visit(node.statements[i]);
+                            stts = format("%s}", stts);
+                        }
+                    }
+                
+                    stop;
+                case StatementKind.FOR:
+                    stts = format("%s->LOOP {", stts);
+                    foreach (i: int; def(node.statements[i])) {
                         visit(node.statements[i]);
                     }
-                }
-                
-                # no need to visit other elements in the if statement
-                stop;
-            } else if (node.kind == StatementKind.TRY) {
-                foreach (i: int; def(node.statements[i])) {
-                    if (i == 0) {
-                        # visit try block
-                        stts = format("%s->TRY {", stts);
-                        visit(node.statements[0]);
-                        stts = format("%s}", stts);
-                    } else {
-                        # visit catch block, multiple catch? not sure.
-                        stts = format("%s CATCH {", stts);
+                    stts = format("%s}", stts);
+                    stop;
+                case StatementKind.WHILE:
+                    stts = format("%s->LOOP {", stts);
+                    foreach (i: int; def(node.statements[i])) {
                         visit(node.statements[i]);
-                        stts = format("%s}", stts);
                     }
-                }
-                stop;
+                    stts = format("%s}", stts);
+                    stop;
+                default: break;
             }
         }
         
