@@ -1,0 +1,447 @@
+# Fetch path conditions for API calls in each method
+p:Project = input;
+conds: output collection[string] of string;
+
+cur_file: string;
+cur_class: string;
+cur_method: string;
+
+# API query
+api_query : array of string;
+api_query = {"createNewFile"};
+
+# type query
+type_query : array of string;
+type_query = {"File"};
+
+# a coarse-grained query methodology based on a given set of types and apis
+query := function(m: Method) : bool{
+    # referenced types in a method
+    types: set of string;
+    # referenced apis in a method
+    apis: set of string;
+    
+    visit(m, visitor{
+        before node: Variable -> add(types, node.variable_type.name);
+        
+        before node: Expression -> {
+            if (node.kind == ExpressionKind.METHODCALL) {
+                add(apis, node.method);
+            }
+        }
+    });
+    
+    # API query
+    foreach(i : int; def(api_query[i])) {
+        if (!contains(apis, api_query[i])) {
+            return false;
+        }
+    }
+    
+    # type query
+    foreach(i : int; def(type_query[i])) {
+        if (!contains(types, type_query[i])) {
+            return false;
+        }
+    }
+    
+    return true;
+};
+
+# takes a method call expression and return a method call sequence in the format of m1.m2.m3...
+get_method_seq := function(expr: Expression) : string {
+    seq: = "";
+    st : stack of string;
+    
+    visit(expr, visitor{
+        before node: Expression -> {
+            switch (node.kind) {
+                case ExpressionKind.METHODCALL:
+                    if (def(node.expressions) && len(node.expressions) == 1) {
+		                if (node.expressions[0].kind == ExpressionKind.VARACCESS || node.expressions[0].kind == ExpressionKind.LITERAL) {
+		                    # This is the first method call in a chain (if any)
+		                    
+		                    # visit arguments first
+		                    if (def(node.method_args)) {
+		                        foreach (i: int; def(node.method_args[i])) {
+		                            visit(node.method_args[i]);
+		                        }
+		                    }
+		    	            
+		    	            # append the first method call
+		    	            if (len(seq) > 0) {
+		    	                seq = format("%s->%s", seq, node.method);
+		    	            } else {
+		    	                seq = node.method;
+		    	            }
+		    	            
+			                # append the rest of method calls in the sequence, if any
+		    	            while (def(peek(st))) {
+			                    # method call sequence			                    
+			                    seq = format("%s->%s", seq, pop(st));
+		    	            }
+			                stop;
+		                } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
+		                    # visit arguments first
+		                    if (def(node.method_args)) {
+		                        foreach (i: int; def(node.method_args[i])) {
+		                            visit(node.method_args[i]);
+		                        }
+		                    }
+		                    
+                    	    # this is a sequence of method calls
+			                push(st, node.method);
+			                
+			                # visit the following method call(s)
+			                visit(node.expressions[0]);
+			                stop;
+		                }
+		            } else if (def(node.expressions) && len(node.expressions) == 0) {
+		                # visit arguments first
+		                if (def(node.method_args)) {
+		                    foreach (i: int; def(node.method_args[i])) {
+		                        visit(node.method_args[i]);
+		                    }
+		                }
+		                
+		                # local method call
+		                if (len(seq) > 0) {
+		    	            seq = format("%s->%s", seq, node.method);
+		    	        } else {
+		    	            seq = node.method;
+		    	        }
+		                
+		                # append the rest of method calls in the sequence, if any
+		                while (def(peek(st))) {
+			                # method call sequence
+			                seq = format("%s->%s", seq, pop(st));
+		                }
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.NEW:
+		            # visit arguments first
+		            if (def(node.expressions)) {
+		                foreach(i: int; def(node.expressions[i])) {
+		                       visit(node.expressions[i]);
+		                }
+		            }
+		            
+		            # constructer is always called first in a chain
+		            if (len(seq) > 0) {
+		                seq = format("%s->new %s", seq, node.new_type.name);
+		            } else {
+		                seq = node.new_type.name;
+		            }
+		            
+		            while (def(peek(st))) {
+		                seq = format("%s->%s", seq, pop(st));
+		            }
+		            
+		            stop;
+                default: break;
+            }
+        }
+    });
+    
+    return seq;
+};
+
+get_predicate := function(expr: Expression) : string {
+    cond := "";
+    
+    visit(expr, visitor{
+        before node: Expression -> {
+            switch (node.kind) {
+                case ExpressionKind.METHODCALL:
+                    cond = format("%s%s", cond, get_method_seq(node));
+		            stop;
+		        case ExpressionKind.NEW:
+		            cond = format("%s%s", cond, get_method_seq(node));
+		            stop;
+		        case ExpressionKind.LOGICAL_NOT:
+		            cond = format("%s!", cond);
+		            break;
+		        case ExpressionKind.VARACCESS:
+		            cond = format("%s%s", cond, node.variable);
+		            break;
+		        case ExpressionKind.LITERAL:
+		            cond = format("%s%s", cond, node.literal);
+		            break;
+		        case ExpressionKind.LOGICAL_AND:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s && ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.LOGICAL_OR:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s || ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.EQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s == ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.LT:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s < ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.LTEQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s <= ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.NEQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s != ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.GT:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s > ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.GTEQ:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s >= ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.OP_ADD:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s + ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.OP_SUB:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s - ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.OP_DIV:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s / ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        case ExpressionKind.OP_MULT:
+		            if (def(node.expressions) && len(node.expressions) == 2) {
+		                visit(node.expressions[0]);
+		                cond = format("%s * ", cond);
+		                visit(node.expressions[1]);
+		                stop;
+		            }
+		            break;
+		        default: break;
+            }
+        }
+    });
+    
+    return cond;
+};
+
+traverse_method := function(m: Method) {
+    key := format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
+    
+    # path conditions : api call -> p1***p2***p3
+    predicates: map[string] of string;
+    
+    # record predicates in each construct
+    ps : array of string;
+    # assume there are less than 10 predicates in one path
+    ps = new(ps, 10, "");
+    cur := 0;
+    
+    condition := "";
+    visit(m, visitor {
+        before node: Statement -> {
+            switch (node.kind) {
+                case StatementKind.IF: 
+                    condition = get_predicate(node.expression);
+                    
+                    foreach (i: int; def(node.statements[i])) {
+                        if (i == 0) {
+                            # if branch
+                            ps[cur] = condition;
+                            cur = cur + 1;
+                            visit(node.statements[0]);
+                            cur = cur - 1;
+                            ps[cur] = "";
+                        } else if (i == 1) {
+                            # else branch, negate the if condition
+                            ps[cur] = format("!(%s)", condition);
+                            cur = cur + 1;
+                            visit(node.statements[1]);
+                            cur = cur - 1;
+                            ps[cur] = "";
+                        } else {
+                            # can this even happen? visit silently
+                            visit(node.statements[i]);
+                        }
+                    }
+                    stop;
+                case StatementKind.FOR:
+                    condition = get_predicate(node.expression);
+                    ps[cur] = condition;
+                    cur = cur + 1;
+                    
+                    foreach (i: int; def(node.statements[i])) {
+                        visit(node.statements[i]);
+                    }
+        
+                    cur = cur - 1;
+                    ps[cur] = "";
+                    stop;
+                case StatementKind.WHILE:
+                    condition = get_predicate(node.expression);
+                    ps[cur] = condition;
+                    cur = cur + 1;
+                    
+                    foreach (i: int; def(node.statements[i])) {
+                        visit(node.statements[i]);
+                    }
+        
+                    cur = cur - 1;
+                    ps[cur] = "";
+                    stop;
+                default: break;
+            }
+        }
+        
+        before node: Expression -> {
+            pc := "";
+            api := "";
+            
+            switch (node.kind) {
+                case ExpressionKind.METHODCALL: 
+                    # conjuct all predicates as path condition
+                    for(i := 0; i < cur; i++) {
+                        if (len(pc) > 0) {
+                            pc = format("%s && %s", pc, ps[i]);
+                        } else {
+                            pc = ps[i];
+                        }
+                    }
+                    
+                    if(len(pc) == 0) break;
+                    
+                    api = node.method;
+		            if (haskey(predicates, api)) {
+		                predicates[api] = format("%s***%s", predicates[api], pc);
+		            } else {
+		                predicates[api] = pc;
+		            }
+                    break;
+                case ExpressionKind.NEW: 
+                    # conjuct all predicates as path condition
+                    for(j := 0; j < cur; j++) {
+                        if (len(pc) > 0) {
+                            pc = format("%s && %s", pc, ps[j]);
+                        } else {
+                            pc = ps[j];
+                        }
+                    }
+                    
+                    if(len(pc) == 0) break;
+                    
+		            api = format("new %s", node.new_type.name);
+		            if (haskey(predicates, api)) {
+		                predicates[api] = format("%s***%s", predicates[api], pc);
+		            } else {
+		                predicates[api] = pc;
+		            }
+                    break;
+                default: break;
+            }
+        }
+    });
+    
+    # emit path conditions (if any) for all apis in this method
+    ks := keys(predicates);
+    if (len(ks) > 0) {
+        ss := "";
+        foreach (i: int; def(ks[i])) {
+            k := ks[i];
+            v := predicates[k];
+            if (len(v) > 0) {
+                # only emit the path condition if it is not empty
+                if (len(ss) > 0) {
+                    ss = format("%s;;;%s::%s", ss, k, v);
+                } else {
+                    ss = format("%s::%s", k, v);
+                }
+            }
+        }
+        
+        if(len(ss) > 0) {
+            conds[key] << ss;
+        }
+    }
+};
+
+visit(p, visitor {
+    # only look at the latest snapshot
+    before node: CodeRepository -> {
+        # ignore projects with less than 100 revisions
+        if (len(node.revisions) < 100) stop;
+        
+        snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
+        foreach (i: int; def(snapshot[i]))
+			visit(snapshot[i]);
+		stop;
+    }
+    
+    # record the current file
+    before node: ChangedFile -> {
+        cur_file = node.name;
+        visit(node, visitor{
+            
+            # visit class declaration
+            before node: Declaration -> {
+                # record the class name
+                cur_class = node.name;
+                
+                foreach(i: int; def(node.methods[i])){
+                    m := node.methods[i];
+                    cur_method = m.name;
+                    
+                    if (query(m)) {
+                        traverse_method(m);
+                    }
+                }
+            }
+        });
+    }
+});
