@@ -1,0 +1,145 @@
+# Fetch arguments in API calls in each relevant method
+# 1. record both variables and method calls
+# 2. annotate method calls with m:: and annotate variables with v::
+# 3. one API may be used multiple times in a single method, separate their arguments with ;;;
+# 4. we do not consider overloaded method currently
+# In this way, we can find relevant APIs in the API sequence and filter irrelevant ones
+p:Project = input;
+margs: output collection[string] of string;
+
+cur_file: string;
+cur_class: string;
+cur_method: string;
+
+# API query
+api_query : array of string;
+api_query = {"createNewFile"};
+
+# type query
+type_query : array of string;
+type_query = {"File"};
+
+# a coarse-grained query methodology based on a given set of types and apis
+query := function(m: Method) : bool{
+    # referenced types in a method
+    types: set of string;
+    # referenced apis in a method
+    apis: set of string;
+    
+    visit(m, visitor{
+        before node: Variable -> add(types, node.variable_type.name);
+        
+        before node: Expression -> {
+            if (node.kind == ExpressionKind.METHODCALL) {
+                add(apis, node.method);
+            }
+        }
+    });
+    
+    # API query
+    foreach(i : int; def(api_query[i])) {
+        if (!contains(apis, api_query[i])) {
+            return false;
+        }
+    }
+    
+    # type query
+    foreach(i : int; def(type_query[i])) {
+        if (!contains(types, type_query[i])) {
+            return false;
+        }
+    }
+    
+    return true;
+};
+
+args: map[string] of string;
+
+get_args := function(m: string, exprs : array of Expression) {
+    ss := "";
+    
+    foreach(i: int; def(node.method_args[i])) {
+	    arg := node.method_args[i];
+	    
+		s := "";
+		if (arg.kind == ExpressionKind.METHODCALL) {
+		    s = format("m::%s", arg.method);
+		} else if (arg.kind == ExpressionKind.VARACCESS) {
+		    s = format("v::%s", arg.variable);
+		}
+		
+		if (len(s) > 0) {
+		    # append this argument to ss
+		    if (len(ss) > 0) {
+		        ss = format("%s, %s", ss, s);
+		    } else {
+		        ss = s;
+		    }
+		}
+	}
+	
+	if (haskey(args, m)) {
+	    args[m] = format("%s;;;%s", args[m], ss); 
+	} else {
+	    args[m] = ss;
+	}
+};
+
+traverse_method := function(m: Method) {
+    key := format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
+    
+    visit(m, visitor{
+        before node: Expression -> {
+            switch (node.kind) {
+                case ExpressionKind.METHODCALL:
+		            if (def(node.method_args)) {
+		                get_args(node.method_args)
+		            }
+		            break;
+                case ExpressionKind.NEW:
+                    
+                    break;
+                default: break;
+            }
+        }
+    });
+    
+    margs[key] << stts;
+    
+    clear(args);
+};
+
+visit(p, visitor {
+    # only look at the latest snapshot
+    before node: CodeRepository -> {
+        # ignore projects with less than 100 revisions
+        if (len(node.revisions) < 100) stop;
+        
+        snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
+        foreach (i: int; def(snapshot[i]))
+			visit(snapshot[i]);
+		stop;
+    }
+    
+    # record the current file
+    before node: ChangedFile -> {
+        cur_file = node.name;
+        visit(node, visitor{
+            
+            # visit class declaration
+            before node: Declaration -> {
+                # record the class name
+                cur_class = node.name;
+                
+                foreach(i: int; def(node.methods[i])){
+                    m := node.methods[i];
+                    cur_method = m.name;
+                    
+                    if (query(m)) {
+                        traverse_method(m);
+                    }
+                }
+            }
+        });
+    }
+});
