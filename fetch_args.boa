@@ -55,34 +55,28 @@ query := function(m: Method) : bool{
 
 args: map[string] of string;
 
-get_args := function(m: string, exprs : array of Expression) {
-    ss := "";
+append_arg := function(pre: string, arg : Expression) : string{
+    s := "";
+    ss := pre;
     
-    foreach(i: int; def(node.method_args[i])) {
-	    arg := node.method_args[i];
-	    
-		s := "";
-		if (arg.kind == ExpressionKind.METHODCALL) {
-		    s = format("m::%s", arg.method);
-		} else if (arg.kind == ExpressionKind.VARACCESS) {
-		    s = format("v::%s", arg.variable);
-		}
+	if (arg.kind == ExpressionKind.METHODCALL) {
+	    s = format("m::%s", arg.method);
+	} else if (arg.kind == ExpressionKind.VARACCESS) {
+		s = format("v::%s", arg.variable);
+	} else if (arg.kind == ExpressionKind.LITERAL) {
+	    s = arg.literal;
+	}
 		
-		if (len(s) > 0) {
-		    # append this argument to ss
-		    if (len(ss) > 0) {
-		        ss = format("%s, %s", ss, s);
-		    } else {
-		        ss = s;
-		    }
+	if (len(s) > 0) {
+	    # append this argument to pre
+        if (len(ss) > 0) {
+		    ss = format("%s, %s", ss, s);
+		} else {
+		    ss = s;
 		}
 	}
 	
-	if (haskey(args, m)) {
-	    args[m] = format("%s;;;%s", args[m], ss); 
-	} else {
-	    args[m] = ss;
-	}
+	return ss;
 };
 
 traverse_method := function(m: Method) {
@@ -90,21 +84,72 @@ traverse_method := function(m: Method) {
     
     visit(m, visitor{
         before node: Expression -> {
+            as := "";
+            mName := "";
+            
             switch (node.kind) {
                 case ExpressionKind.METHODCALL:
+                    mName = node.method;
+                    
 		            if (def(node.method_args)) {
-		                get_args(node.method_args)
+		                foreach(i: int; def(node.method_args[i])) {
+		                    as = append_arg(as, node.method_args[i]);
+		                }
 		            }
+		            
+		            if (len(as) == 0){
+	                    as = "NO_ARG";
+	                }
+	                
+	                if (haskey(args, mName)) {
+	                    args[mName] = format("%s;;;%s", args[mName], as); 
+	                } else {
+	                    args[mName] = as;
+	                }
+	                
 		            break;
                 case ExpressionKind.NEW:
+                    mName = format("new %s", node.new_type.name);
                     
-                    break;
+                    if (def(node.expressions)) {
+		                foreach(i: int; def(node.expressions[i])) {
+		                    as = append_arg(as, node.expressions[i]);
+		                }
+		            }
+		            
+		            if (len(as) == 0){
+	                    as = "NO_ARG";
+	                }
+	
+	                if (haskey(args, mName)) {
+	                    args[mName] = format("%s;;;%s", args[mName], as); 
+	                } else {
+	                    args[mName] = as;
+	                }
+	                
+		            break;
                 default: break;
             }
         }
     });
     
-    margs[key] << stts;
+    ks := keys(args);
+    if (len(ks) > 0) {
+        ss := "";
+        foreach (i: int; def(ks[i])) {
+            k := ks[i];
+            v := args[k];
+            if (len(ss) > 0) {
+                ss = format("%s@@%s->%s", ss, k, v);
+            } else {
+                ss = format("%s->%s", k, v);
+            }
+        }
+        
+        if(len(ss) > 0) {
+            margs[key] << ss;
+        }
+    }
     
     clear(args);
 };
