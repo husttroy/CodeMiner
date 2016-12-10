@@ -87,7 +87,7 @@ visit(p, visitor {
                             }
                         });
                         
-                        mkey := format("%s * %s * %s * %s", p.project_url, cur_file, cur_class, cur_method);
+                        mkey := format("%s ** %s ** %s ** %s", p.project_url, cur_file, cur_class, cur_method);
                         ks := keys(local_table);
                         ls := "";
                         foreach (j: int; def(ks[j])) {
@@ -103,7 +103,7 @@ visit(p, visitor {
                 
                 if (flag) {
                     # emit fields declared in the class
-                    key := format("%s * %s * %s", p.project_url, cur_file, cur_class);
+                    key := format("%s ** %s ** %s", p.project_url, cur_file, cur_class);
                     fs := "";
                     
                     foreach (i: int; def(node.fields[i])){
