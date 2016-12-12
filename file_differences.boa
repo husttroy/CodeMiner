@@ -10,97 +10,73 @@ new_method_map : map[string] of Expression;
 q_url := "https://github.com/fywb251/bsl_impc_android";
 q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
 
-
-
 find_methods := function(root: ASTRoot, target_map: map[string] of Expression)
 {
 	clear(target_map);
 	visit(root, visitor{
 		before node: Expression -> {
 			if (node.kind == ExpressionKind.METHODCALL) {
+			    # FIXME: What if a method is called a few times?
 				target_map[node.method] = node;
 			}
 		}
 	});
 };
 
-
-
-changed_args := function(curr_method: string, old: Expression, new: Expression)
+changed_args := function(curr_method: string, old_expr: Expression, new_expr: Expression)
 {
 	#  Make sets out of the method_args arrays so that we can use the contains function.
 	old_literal_args_set : set of string;
 	old_variable_args_set : set of string;
-	foreach( i:int; def(old.method_args[i]))
-	{
-		if(old.method_args[i].kind == ExpressionKind.LITERAL)
-		{
-			add(old_literal_args_set, old.method_args[i]);
-		}
-
-
-		if(old.method_args[i].kind == ExpressionKind.VARACCESS)
-		{
-			add(old_variable_args_set, old.method_args[i]);
-		}
-	}
-
 	new_literal_args_set : set of string;
 	new_variable_args_set : set of string;
-	foreach( i:int; def(new.method_args[i]))
-	{
-		if(new.method_args[i].kind == ExpressionKind.LITERAL)
-		{
-			add(new_literal_args_set, new.method_args[i]);
+	
+	# method_args may not exist, so you need to check if it is defined first
+	foreach (i:int; def(old_expr.method_args[i])) {
+	    if(old_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+		    add(old_literal_args_set, old_expr.method_args[i].literal);
 		}
 
-		if(new.method_args[i].kind == ExpressionKind.VARACCESS)
-		{
-			add(new_variable_args_set, new.method_args[i]);
+        if(old_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+		    add(old_variable_args_set, old_expr.method_args[i].variable);
 		}
 	}
+	
+	foreach(i:int; def(new_expr.method_args[i])) {
+        if(new_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+		    add(new_literal_args_set, new_expr.method_args[i].literal);
+		}
 
+		if(new_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+		    add(new_variable_args_set, new_expr.method_args[i].variable);
+		}
+	}
+	
 	# Now, we can use contains
-	foreach( i: int; def(old.method_args[i]))
-	{
-		
-		arg: string;
-		if(old.method_args[i].kind == ExpressionKind.LITERAL)
-		{
-			if(!contains(new_literal_args_set, old.method_args[i].literal))
-			{
-				arg = old.method_args[i].literal;
+	arg : string;
+	foreach(i: int; def(old_expr.method_args[i])) {
+		if(old_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+			if(!contains(new_literal_args_set, old_expr.method_args[i].literal)) {
+				arg = old_expr.method_args[i].literal;
 				diffs[curr_method] << format("Old version has literal argument %s that is not in the new version", arg);
 			}
-		}
-		else if (old.method_args[i].kind == ExpressionKind.VARACCESS)
-		{
-			if(!contains(new_variable_args_set, old.method_args[i].variable))
-			{
-				arg = old.method_args[i].variable;
+		} else if (old_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+			if(!contains(new_variable_args_set, old_expr.method_args[i].variable)) {
+			    arg = old_expr.method_args[i].variable;
 				diffs[curr_method] << format("Old version has variable argument %s that is not in the new version", arg);
 			}
 		}
-
 	}
-
-
-	foreach( i: int; def(new.method_args[i]))
-	{
-		arg: string;
-		if(new.method_args[i].kind == ExpressionKind.LITERAL)
-		{
-			if(!contains(old_literal_args_set, new.method_args[i].literal))
-			{
-				arg = new.method_args[i].literal;
+	
+	foreach(i: int; def(new_expr.method_args[i])) {
+		if(new_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+			if(!contains(old_literal_args_set, new_expr.method_args[i].literal)) {
+				arg = new_expr.method_args[i].literal;
 				diffs[curr_method] << format("New version has literal argument %s that is not in the old version", arg);
 			}
-		}
-		else if (new.method_args[i].kind == ExpressionKind.VARACCESS)
-		{
-			if(!contains(old_variable_args_set, new.method_args[i].variable))
-			{
-				arg = new.method_args[i].variable;
+		} else if (new_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+			if(!contains(old_variable_args_set, new_expr.method_args[i].variable)) {
+				arg = new_expr.method_args[i].variable;
 				diffs[curr_method] << format("New version has variable argument %s that is not in the old version", arg);
 			}
 		}		
@@ -111,30 +87,23 @@ changed_args := function(curr_method: string, old: Expression, new: Expression)
 # A, B are maps of METHODCALL expressions, mapped by the Method names
 find_repetitive_edits := function(A: map[string] of Expression, B: map[string] of Expression)
 {
-	foreach( i:int; def(keys(A)[i]))
+    ks := keys(A);
+    
+	foreach (i:int; def(ks[i]))
 	{
-		if (haskey (B, keys(A)[i]))
+		if (haskey(B, ks[i]))
 		{
-			# This method is in both versions, so inspect it.
-			changed_args(keys(A)[i], A[keys(A)[i]], B[keys(A)[i]]);
+			# This method call appear in both versions, so inspect it.
+			changed_args(ks[i], A[ks[i]], B[ks[i]]);
 		}
 	}
 };
-
-
 
 visit(p, visitor {
     # only look at the latest snapshot
     before node: CodeRepository -> {
         # only look at the given project
         if (!match(p.project_url, q_url)) stop;
-        
-        snapshot := getsnapshot(node, "SOURCE_JAVA_JLS");
-        foreach (i: int; def(snapshot[i]))
-        {
-			visit(snapshot[i]);
-        }
-		stop;
     }
 
     before node: ChangedFile -> {
@@ -144,23 +113,18 @@ visit(p, visitor {
         	stop;
 
     	if(haskey(files, node.name)) {
+    	    # record method calls in the previous revision (cached in files) and the new revision (currently visited)
     		find_methods(getast(files[node.name]), old_method_map);
     		find_methods(getast(node), new_method_map);
     	}
+    	
     	if (node.change == ChangeKind.DELETED)
+    	    # delete previous revision (if any) since the file has been deleted
     		remove(files, node.name);
     	else
+    	    # update the cached file revision with this newly visited revision
     		files[node.name] = node;
 
     	find_repetitive_edits(old_method_map, new_method_map);
     }
-
-    
 });
-
-
-
-
-
-
-
