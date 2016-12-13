@@ -1,0 +1,158 @@
+p: Project = input; 
+diffs: output collection[string] of string;
+
+files: map[string] of ChangedFile;
+
+
+old_method_map : map[string] of map[int] of Expression;
+new_method_map : map[string] of map[int] of Expression;
+
+# Limit investigation to a specific repo.
+q_url := "https://github.com/fywb251/bsl_impc_android";
+q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
+
+
+find_methods := function(root: ASTRoot, target_map: map[string] of map[int] of Expression)
+{
+    temp_map : map[int] of Expression;
+	visit(root, visitor{
+		before node: Expression -> {
+			if (node.kind == ExpressionKind.METHODCALL) {
+                # Accessing variables in a 2D Map is buggy
+                temp_map = target_map[node.method];
+                nextIndex : int;
+                
+                if(def(temp_map[0]))
+                {
+                    foreach(i:int; def(temp_map[i]))
+                    {
+                        nextIndex = i+1;
+                    }
+                    temp_map[nextIndex] = node;
+                }
+	            else
+	            {
+	                temp_map[0] = node;
+	            }
+	            clear(target_map[node.method]);
+	            target_map[node.method] = temp_map;
+                
+			}
+		}
+	});
+	
+
+};
+
+
+changed_args := function(curr_method: string, old_expr: Expression, new_expr: Expression)
+{
+	#  Make sets out of the method_args arrays so that we can use the contains function.
+	old_literal_args_set : set of string;
+	old_variable_args_set : set of string;
+	new_literal_args_set : set of string;
+	new_variable_args_set : set of string;
+	
+	# method_args may not exist, so you need to check if it is defined first
+	foreach (i:int; def(old_expr.method_args[i])) {
+	    if(old_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+		    add(old_literal_args_set, old_expr.method_args[i].literal);
+		}
+
+        if(old_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+		    add(old_variable_args_set, old_expr.method_args[i].variable);
+		}
+	}
+	
+	foreach(i:int; def(new_expr.method_args[i])) {
+        if(new_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+		    add(new_literal_args_set, new_expr.method_args[i].literal);
+		}
+
+		if(new_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+		    add(new_variable_args_set, new_expr.method_args[i].variable);
+		}
+	}
+	
+	# Now, we can use contains
+	arg : string;
+	foreach(i: int; def(old_expr.method_args[i])) {
+		if(old_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+			if(!contains(new_literal_args_set, old_expr.method_args[i].literal)) {
+				arg = old_expr.method_args[i].literal;
+				diffs[curr_method] << format("Old version has literal argument %s that is not in the new version", arg);
+			}
+		} else if (old_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+			if(!contains(new_variable_args_set, old_expr.method_args[i].variable)) {
+			    arg = old_expr.method_args[i].variable;
+				diffs[curr_method] << format("Old version has variable argument %s that is not in the new version", arg);
+			}
+		}
+	}
+	
+	foreach(i: int; def(new_expr.method_args[i])) {
+		if(new_expr.method_args[i].kind == ExpressionKind.LITERAL) {
+			if(!contains(old_literal_args_set, new_expr.method_args[i].literal)) {
+				arg = new_expr.method_args[i].literal;
+				diffs[curr_method] << format("New version has literal argument %s that is not in the old version", arg);
+			}
+		} else if (new_expr.method_args[i].kind == ExpressionKind.VARACCESS) {
+			if(!contains(old_variable_args_set, new_expr.method_args[i].variable)) {
+				arg = new_expr.method_args[i].variable;
+				diffs[curr_method] << format("New version has variable argument %s that is not in the old version", arg);
+			}
+		}		
+	}
+};
+
+
+
+# A, B are maps of METHODCALL expressions, mapped by the Method names
+find_repetitive_edits := function(A: map[string] of map[int] of Expression, B: map[string] of map[int] of Expression)
+{
+    ks := keys(A);
+    
+	foreach (i:int; def(ks[i]))
+	{
+		if(def(B[ks[i]][0]))		
+		{
+			# This method call appear in both versions, so inspect it.
+            aExpr := values(A[ks[i]]);
+            bExpr := values(B[ks[i]]);
+            
+            foreach (j: int; def(aExpr[j]))
+                foreach (k:int; def(bExpr[k]))
+                    changed_args(ks[i], aExpr[j], bExpr[k]);
+		}
+	}
+};
+
+visit(p, visitor {
+    # only look at the latest snapshot
+    before node: CodeRepository -> {
+        # only look at the given project
+        if (!match(p.project_url, q_url)) stop;
+    }
+
+    before node: ChangedFile -> {
+        
+        # only look at the given java file
+        if (!match(node.name, q_file)) 
+        	stop;
+
+    	if(haskey(files, node.name)) {
+    	    # record method calls in the previous revision (cached in files) and the new revision (currently visited)
+    		find_methods(getast(files[node.name]), old_method_map);
+    		find_methods(getast(node), new_method_map);
+    	}
+    	
+    	if (node.change == ChangeKind.DELETED)
+    	    # delete previous revision (if any) since the file has been deleted
+    		remove(files, node.name);
+    	else
+    	    # update the cached file revision with this newly visited revision
+    		files[node.name] = node;
+
+    	find_repetitive_edits(old_method_map, new_method_map);
+    }
+});
