@@ -178,9 +178,13 @@ traverse_method := function(m: Method) {
                             stts = format("%s->TRY {", stts);
                             visit(node.statements[0]);
                             stts = format("%s}", stts);
-                        } else {
+                        } else if (node.statements[i].kind == StatementKind.CATCH) {
                             # visit catch block, multiple catch? not sure.
-                            stts = format("%s CATCH {", stts);
+                            stts = format("%s->CATCH {", stts);
+                            visit(node.statements[i]);
+                            stts = format("%s}", stts);
+                        } else if (node.statements[i].kind == StatementKind.BLOCK) {
+                            stts = format("%s->FINALLY {", stts);
                             visit(node.statements[i]);
                             stts = format("%s}", stts);
                         }
