@@ -159,7 +159,7 @@ traverse_method := function(m: Method) {
                             stts = format("%s}", stts);
                         } else if (i == 1) {
                             # visit else branch
-                            stts = format("%s ELSE {", stts);
+                            stts = format("%s->ELSE {", stts);
                             visit(node.statements[1]);
                             stts = format("%s}", stts);
                         } else {
