@@ -61,6 +61,8 @@ append_arg := function(pre: string, arg : Expression) : string{
     
 	if (arg.kind == ExpressionKind.METHODCALL) {
 	    s = format("m::%s", arg.method);
+	} else if (arg.kind == ExpressionKind.NEW) {
+	    s = format("m::new %s", arg.new_type.name);
 	} else if (arg.kind == ExpressionKind.VARACCESS) {
 		s = format("v::%s", arg.variable);
 	} else if (arg.kind == ExpressionKind.LITERAL) {
