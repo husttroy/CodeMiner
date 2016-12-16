@@ -62,13 +62,13 @@ append_right_hand := function(left : string, expr : Expression){
         before node: Expression -> {
             switch (node.kind) {
                 case ExpressionKind.METHODCALL:
-                    s = format("%s|%s", s, node.method);
+                    s = format("%s|m::%s", s, node.method);
                     break;
                 case ExpressionKind.NEW:
-                    s = format("%s|new %s", s, node.new_type.name);
+                    s = format("%s|m::new %s", s, node.new_type.name);
                     break;
                 case ExpressionKind.VARACCESS:
-                    s = format("%s|%s", s, node.variable);
+                    s = format("%s|v::%s", s, node.variable);
                     break;
                 case ExpressionKind.LITERAL:
                     s = format("%s|%s", s, node.literal);
