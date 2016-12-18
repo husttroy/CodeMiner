@@ -65,9 +65,16 @@ traverse_method := function(m: Method) {
 		                if (node.expressions[0].kind == ExpressionKind.VARACCESS) {
 		                    v := node.expressions[0].variable;
 		                    if (haskey(rs, mName)) {
-		                        rs[mName] = format("%s;;;%s", rs[mName], v);
+		                        rs[mName] = format("%s;;;v::%s", rs[mName], v);
 		                    } else {
-		                        rs[mName] = v;
+		                        rs[mName] = format("v::%s", v);
+		                    }
+		                } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
+		                    mc := node.expressions[0].method;
+		                    if (haskey(rs, mName)) {
+		                        rs[mName] = format("%s;;;m::%s", rs[mName], mc);
+		                    } else {
+		                        rs[mName] = format("m::%s", mc);
 		                    }
 		                }
 		            }
