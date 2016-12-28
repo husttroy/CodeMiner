@@ -1,0 +1,67 @@
+#method_calls.boa
+# store all method calls of the same method in string
+# each is separated by ;
+
+p: Project = input;
+all_methods: output collection[string] of string;
+
+# Limit investigation to a specific repo.
+q_url := "https://github.com/fywb251/bsl_impc_android";
+q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
+
+revision : int;
+revision = 0;
+
+get_method_calls := function(rev_num: int, methods: ASTRoot)
+{
+  meth_name : string;
+  arg_strings : map[string] of string;
+  visit(methods, visitor{
+    before node: Expression -> {
+      if (node.kind == ExpressionKind.METHODCALL) {
+        meth_name = node.method;
+        arg_strings[meth_name] = format("%s %s(", arg_strings[meth_name], meth_name);
+        n_args := len(node.method_args);
+        arg_count := 0;
+        foreach(i :int; def(node.method_args[i]))
+        {
+          arg_count = arg_count+1;
+          if(node.method_args[i].kind == ExpressionKind.VARACCESS)
+          {
+            arg_strings[meth_name] = format("%s %s", arg_strings[meth_name], node.method_args[i].variable);
+          }
+          else if(node.method_args[i].kind == ExpressionKind.LITERAL)
+          {
+            arg_strings[meth_name] = format("%s %s", arg_strings[meth_name], node.method_args[i].literal);
+          }
+          else
+          {
+            arg_strings[meth_name] = format("%s non-variable and non-literal", arg_strings[meth_name]);
+          }
+          if(arg_count < n_args)
+            arg_strings[meth_name] = format("%s, ", arg_strings[meth_name]);
+        }
+        arg_strings[meth_name] = format ("%s) ; ", arg_strings[meth_name]);
+      }
+    }
+  });
+
+  meths := keys(arg_strings);
+  foreach(j: int; def(meths[j]))
+  {
+    all_methods[meths[j]] << format("Revision number %d -- %s", rev_num, arg_strings[meths[j]]);
+  }
+};
+
+visit(p, visitor {
+  before node: CodeRepository -> {
+    if(!match(p.project_url, q_url))
+      stop;
+  }
+  before node: ChangedFile-> {
+    if (!match(node.name, q_file))
+      stop;
+    revision = revision + 1;
+    get_method_calls(revision, getast(node));
+  }
+});
