@@ -41,7 +41,7 @@ get_method_calls := function(rev_num: int, methods: ASTRoot)
           if(arg_count < n_args)
             arg_strings[meth_name] = format("%s, ", arg_strings[meth_name]);
         }
-        arg_strings[meth_name] = format ("%s) ; ", arg_strings[meth_name]);
+        arg_strings[meth_name] = format ("%s) ;; ", arg_strings[meth_name]);
       }
     }
   });
