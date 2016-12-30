@@ -1,0 +1,27 @@
+p: Project = input;
+all_methods: output collection[string] of string;
+
+# Limit investigation to a specific repo.
+q_url := "https://github.com/fywb251/bsl_impc_android";
+q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
+
+revision := 0;
+
+visit(p, visitor {
+  before node: CodeRepository -> {
+    if(!match(p.project_url, q_url))
+      stop;
+  }
+  
+  before node: Revision -> {
+    foreach(i: int; def(node.files[i])) {
+        file := node.files[i];
+        if(match(file.name, q_file)) {
+            revision = revision + 1;
+            all_methods[file.name] << format("Revision number %d -- %s", revision, node.log);
+        }
+    };
+    
+    stop;
+  }
+});
