@@ -14,13 +14,20 @@ revision = 0;
 
 get_method_calls := function(rev_num: int, methods: ASTRoot)
 {
-  meth_name : string;
+  # store method calls and their arguments
   arg_strings : map[string] of string;
+  
   visit(methods, visitor{
     before node: Expression -> {
       if (node.kind == ExpressionKind.METHODCALL) {
-        meth_name = node.method;
-        arg_strings[meth_name] = format("%s %s(", arg_strings[meth_name], meth_name);
+        meth_name := node.method;
+        if (haskey(arg_strings, meth_name)) {
+            # calling the same method multiple times in the same revision
+            arg_strings[meth_name] = format("%s %s(", arg_strings[meth_name], meth_name);
+        } else {
+            arg_strings[meth_name] = format("%s(", meth_name);
+        }
+        
         n_args := len(node.method_args);
         arg_count := 0;
         foreach(i :int; def(node.method_args[i]))
@@ -36,12 +43,13 @@ get_method_calls := function(rev_num: int, methods: ASTRoot)
           }
           else
           {
+            # it can be another method call in the format of a.foo(b.bar(), "abc")
             arg_strings[meth_name] = format("%s non-variable and non-literal", arg_strings[meth_name]);
           }
           if(arg_count < n_args)
             arg_strings[meth_name] = format("%s, ", arg_strings[meth_name]);
         }
-        arg_strings[meth_name] = format ("%s) ;; ", arg_strings[meth_name]);
+        arg_strings[meth_name] = format ("%s) ; ", arg_strings[meth_name]);
       }
     }
   });
