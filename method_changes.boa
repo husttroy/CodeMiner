@@ -28,7 +28,7 @@ get_method_calls := function(rev_num: string, methods: ASTRoot, result_map : map
       if (node.kind == ExpressionKind.METHODCALL) {
         meth_name := node.method;
         node_string := format("%s", node);
-        if(len(node_string)>1000)
+%        if(len(node_string)>1000)
 
         if (haskey(arg_strings, meth_name)) {
             # calling the same method multiple times in the same revision
