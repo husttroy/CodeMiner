@@ -54,7 +54,7 @@ get_method_calls := function(rev_num: string, methods: ASTRoot, result_map : map
   }
 };
 
-match_methods := function(rev_num: int, target : string , source : array of string) : bool
+match_methods := function(rev_num: string, target : string , source : array of string) : bool
 {
 foreach(i:int; def(source[i]))
 {
