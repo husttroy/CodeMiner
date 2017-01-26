@@ -1,0 +1,151 @@
+# Outputs all changed methods in a file and the revision number of the change.
+
+p: Project = input;
+changed_methods: output collection[string] of string;
+
+# Limit investigation to a specific repo.
+q_url := "https://github.com/fywb251/bsl_impc_android";
+q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
+
+merge_filter := "merge";
+
+revision : int;
+revision = 0;
+
+old_methods : map[string] of string;
+new_methods : map[string] of string;
+
+
+
+get_method_calls := function(rev_num: int, methods: ASTRoot, result_map : map[string] of string)
+{
+  # store method calls and their arguments
+  arg_strings : map[string] of string;
+
+  visit(methods, visitor{
+    before node: Expression -> {
+      if (node.kind == ExpressionKind.METHODCALL) {
+        meth_name := node.method;
+        node_string := format("%s", node);
+
+        if (haskey(arg_strings, meth_name)) {
+            # calling the same method multiple times in the same revision
+            arg_strings[meth_name] = format("%s %s", arg_strings[meth_name], node_string);
+
+
+        } else {
+            arg_strings[meth_name] = format("%s", node_string);
+        }
+
+
+        arg_strings[meth_name] = format ("%s ;; ", arg_strings[meth_name]);
+
+      }
+    }
+  });
+
+  meths := keys(arg_strings);
+  foreach(j: int; def(meths[j]))
+  {
+    if(def(arg_strings[meths[j]]));
+      result_map[meths[j]] = format("%s", arg_strings[meths[j]]);
+  }
+};
+
+match_methods := function(rev_num: int, target : string , source : array of string) : bool
+{
+foreach(i:int; def(source[i]))
+{
+        if(target == source[i])
+        return true;
+}
+return false;
+
+};
+
+
+compare_methods := function(rev_num: int, old_map: map[string] of string, new_map: map[string] of string)
+{
+  # get the keys. We care about microclones in the method arguments, so we only care about methods that exist in both revisions. So it doesn't matter whether we get the keys from old or new
+  common_methods := keys(old_map);
+
+  # compare the values (Arguments) for each key (Method) in the two revisions
+  foreach( i : int; def(common_methods[i]))
+  {
+  # if the values for a key are different, find out which ones are different.
+    old_str := lowercase(old_map[common_methods[i]]);
+    new_str := lowercase(new_map[common_methods[i]]);
+
+    old_string := strreplace(old_str, "\n", "", true);
+    new_string := strreplace(new_str, "\n", "", true);
+
+    delimiter := ";;";
+
+    # old and new calls are each arrays of strings
+    # each index contains one function call, formatted " foo(a, b) "
+    old_calls := splitall(old_string, delimiter);
+    new_calls := splitall(new_string, delimiter);
+
+    # Go through every method in the older revision, and see if they're still present in the newer revision
+    foreach(a : int; def(old_calls[a]))
+    {
+
+
+      # If there's a function call in the old version that doesn't appear in the new version, print it out.
+     if(!match_methods(rev_num, old_calls[a], new_calls))
+       changed_methods[format("%d %s", rev_num, common_methods[i])] << format("The call %s was removed.", old_calls[a]);
+    }
+
+    # Go through every method in the newer revision, and see if they were already present in the older revision
+    foreach(b : int; def(new_calls[b]))
+    {
+
+     if(!match_methods(rev_num, new_calls[b], old_calls))
+       changed_methods[format("%d %s", rev_num, common_methods[i])] << format("The call %s was added.", new_calls[b]);
+    }
+  }
+};
+
+copyMap:= function(from: map[string] of string, to: map[string] of string)
+{
+  clear(to);
+  fKeys := keys(from);
+
+  foreach(i:int; def(fKeys[i]))
+  {
+    to[fKeys[i]] = from[fKeys[i]];
+  }
+
+};
+
+
+visit(p, visitor {
+  before node: CodeRepository -> {
+    if(!match(p.project_url, q_url))
+      stop;
+  }
+
+  before node: Revision -> {
+    if (match(merge_filter, lowercase(node.log)))
+    {
+      stop;
+    }
+  }
+
+  before node: ChangedFile-> {
+    if (match(node.name, q_file) && ((node.kind == FileKind.SOURCE_JAVA_JLS3) || (node.kind == FileKind.SOURCE_JAVA_JLS2) || (node.kind == FileKind.SOURCE_JAVA_JLS4) ))
+    {
+      revision = revision + 1;
+
+      # get_method_calls will store all the method calls from this revision.
+      get_method_calls(revision, getast(node), new_methods);
+
+      if (revision > 1)
+      {
+          compare_methods(revision, old_methods, new_methods);
+      }
+      copyMap(new_methods, old_methods);
+
+    }
+  }
+});
