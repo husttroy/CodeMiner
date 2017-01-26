@@ -1,4 +1,6 @@
-# Outputs all changed methods in a file and the revision number of the change.
+#all_method_diffs.boa
+# store all method calls of the same method in string
+# each is separated by ;
 
 p: Project = input;
 changed_methods: output collection[string] of string;
@@ -9,15 +11,14 @@ q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragme
 
 merge_filter := "merge";
 
-revision : int;
-revision = 0;
+revision : string;
 
 old_methods : map[string] of string;
 new_methods : map[string] of string;
 
 
 
-get_method_calls := function(rev_num: int, methods: ASTRoot, result_map : map[string] of string)
+get_method_calls := function(rev_num: string, methods: ASTRoot, result_map : map[string] of string)
 {
   # store method calls and their arguments
   arg_strings : map[string] of string;
@@ -27,6 +28,7 @@ get_method_calls := function(rev_num: int, methods: ASTRoot, result_map : map[st
       if (node.kind == ExpressionKind.METHODCALL) {
         meth_name := node.method;
         node_string := format("%s", node);
+        if(len(node_string)>1000)
 
         if (haskey(arg_strings, meth_name)) {
             # calling the same method multiple times in the same revision
@@ -64,7 +66,7 @@ return false;
 };
 
 
-compare_methods := function(rev_num: int, old_map: map[string] of string, new_map: map[string] of string)
+compare_methods := function(rev_num: string, old_map: map[string] of string, new_map: map[string] of string)
 {
   # get the keys. We care about microclones in the method arguments, so we only care about methods that exist in both revisions. So it doesn't matter whether we get the keys from old or new
   common_methods := keys(old_map);
@@ -93,7 +95,7 @@ compare_methods := function(rev_num: int, old_map: map[string] of string, new_ma
 
       # If there's a function call in the old version that doesn't appear in the new version, print it out.
      if(!match_methods(rev_num, old_calls[a], new_calls))
-       changed_methods[format("%d %s", rev_num, common_methods[i])] << format("The call %s was removed.", old_calls[a]);
+       changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was removed.", old_calls[a]);
     }
 
     # Go through every method in the newer revision, and see if they were already present in the older revision
@@ -101,7 +103,7 @@ compare_methods := function(rev_num: int, old_map: map[string] of string, new_ma
     {
 
      if(!match_methods(rev_num, new_calls[b], old_calls))
-       changed_methods[format("%d %s", rev_num, common_methods[i])] << format("The call %s was added.", new_calls[b]);
+       changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was added.", new_calls[b]);
     }
   }
 };
@@ -130,17 +132,16 @@ visit(p, visitor {
     {
       stop;
     }
+    revision = node.id;
   }
 
   before node: ChangedFile-> {
     if (match(node.name, q_file) && ((node.kind == FileKind.SOURCE_JAVA_JLS3) || (node.kind == FileKind.SOURCE_JAVA_JLS2) || (node.kind == FileKind.SOURCE_JAVA_JLS4) ))
     {
-      revision = revision + 1;
-
       # get_method_calls will store all the method calls from this revision.
       get_method_calls(revision, getast(node), new_methods);
 
-      if (revision > 1)
+      if (def(old_methods))
       {
           compare_methods(revision, old_methods, new_methods);
       }
