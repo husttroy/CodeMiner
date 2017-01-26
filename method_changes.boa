@@ -1,7 +1,3 @@
-#all_method_diffs.boa
-# store all method calls of the same method in string
-# each is separated by ;
-
 p: Project = input;
 changed_methods: output collection[string] of string;
 
@@ -32,7 +28,7 @@ get_method_calls := function(rev_num: string, methods: ASTRoot, result_map : map
 
         if (haskey(arg_strings, meth_name)) {
             # calling the same method multiple times in the same revision
-            arg_strings[meth_name] = format("%s %s", arg_strings[meth_name], node_string);
+            arg_strings[meth_name] = format("%s%s", arg_strings[meth_name], node_string);
 
 
         } else {
@@ -40,7 +36,7 @@ get_method_calls := function(rev_num: string, methods: ASTRoot, result_map : map
         }
 
 
-        arg_strings[meth_name] = format ("%s ;; ", arg_strings[meth_name]);
+        arg_strings[meth_name] = format ("%s;;", arg_strings[meth_name]);
 
       }
     }
