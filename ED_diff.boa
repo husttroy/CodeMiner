@@ -1,0 +1,58 @@
+# pwu
+p: Project = input;
+his: output collection[string] of string;
+
+# Limit investigation to a specific repo.
+q_url := "https://github.com/fywb251/bsl_impc_android";
+q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
+
+old_snapshot: map[string] of ChangedFile;
+msg: string;
+
+
+getStr:= function(file: ChangedFile): string
+{
+    s := format("%s", getast(file));
+    s = strreplace(s, " ", "", true);
+    return s;
+};
+
+diff:= function(s1: string, s2: string)
+{
+    l1 := len(s1);
+};
+
+if (match(p.project_url, q_url))
+visit(p, visitor {
+    
+    before node: Revision -> {
+	msg = format("%s", node.log); 
+    }
+
+    before node: ChangedFile -> {
+
+	if (!match(".*java$", node.name))
+	    stop;
+	if (!match(q_file, node.name))	#to delete
+	    stop;
+
+	if ( (node.kind != FileKind.SOURCE_JAVA_JLS3) &&
+		(node.kind != FileKind.SOURCE_JAVA_JLS2) &&
+		(node.kind != FileKind.SOURCE_JAVA_JLS4) )
+		stop;
+
+
+	if (node.change == ChangeKind.ADDED) {
+	    old_snapshot[node.name] = node;
+	}
+	else if (node.change == ChangeKind.DELETED) {
+	    remove(old_snapshot, node.name);
+	}
+	else {
+	    diff(getStr(old_snapshot[node.name]), getStr(node));
+	    old_snapshot[node.name] = node;
+	    his[node.name] << format("%s", getStr(node));
+	}
+	stop;
+    }
+});
