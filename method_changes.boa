@@ -24,8 +24,8 @@ get_method_calls := function(rev_num: string, methods: ASTRoot, result_map : map
       if (node.kind == ExpressionKind.METHODCALL) {
         meth_name := node.method;
         node_string := format("%s", node);
-#        if(len(node_string)>1000)
-
+        if(len(node_string)>1000)
+          stop;
         if (haskey(arg_strings, meth_name)) {
             # calling the same method multiple times in the same revision
             arg_strings[meth_name] = format("%s%s", arg_strings[meth_name], node_string);
@@ -61,6 +61,27 @@ return false;
 
 };
 
+# Gets the number of instances that a string appears in an array of strings
+getNumInstances := function(target:string, source: array of string) : int
+{
+  count:= 0;
+  foreach(i:int; def(source[i]))
+  {
+    if(target==source[i])
+    count++;
+  }
+  return count;
+};
+#Gets the index number of a string from an array of strings.
+getIndex := function(target:string, source: array of string) : int
+{
+foreach(i:int; def(source[i]))
+{
+  if(target==source[i])
+  return i;
+}
+return -1;
+};
 
 compare_methods := function(rev_num: string, old_map: map[string] of string, new_map: map[string] of string)
 {
@@ -84,23 +105,39 @@ compare_methods := function(rev_num: string, old_map: map[string] of string, new
     old_calls := splitall(old_string, delimiter);
     new_calls := splitall(new_string, delimiter);
 
+
+    #### 
+    # First, we see if there were any method calls that were added or removed. If a particular method call exists in both revisions, then we check if the number of times it was called changed between the two revisions.
     # Go through every method in the older revision, and see if they're still present in the newer revision
     foreach(a : int; def(old_calls[a]))
     {
-
-
-      # If there's a function call in the old version that doesn't appear in the new version, print it out.
-     if(!match_methods(rev_num, old_calls[a], new_calls))
-       changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was removed.", old_calls[a]);
+        # If there's a function call in the old version that doesn't appear in the new version, print it out.
+        if(!match_methods(rev_num, old_calls[a], new_calls))
+         changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was removed.", old_calls[a]);
+        else
+        {
+          old_nInstances := getNumInstances(old_calls[a], old_calls);
+          pos_in_new_calls := getIndex(old_calls[a], new_calls);
+          
+          new_nInstances := getNumInstances(new_calls[pos_in_new_calls], new_calls);
+          if(old_nInstances != new_nInstances)
+          {
+            changed_methods[format("%s %s ", rev_num, common_methods[i])] << format("The number of times this method was called changed from %d to %d. %s", old_nInstances, new_nInstances, old_calls[a]);
+          }
+        }
+         
     }
 
     # Go through every method in the newer revision, and see if they were already present in the older revision
     foreach(b : int; def(new_calls[b]))
     {
-
-     if(!match_methods(rev_num, new_calls[b], old_calls))
-       changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was added.", new_calls[b]);
+       if(!match_methods(rev_num, new_calls[b], old_calls))
+         changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was added.", new_calls[b]);
     }
+
+
+
+    
   }
 };
 
