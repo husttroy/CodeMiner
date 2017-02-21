@@ -94,9 +94,13 @@ compare_methods := function(rev_num: string, old_map: map[string] of string, new
   # if the values for a key are different, find out which ones are different.
     old_str := lowercase(old_map[common_methods[i]]);
     new_str := lowercase(new_map[common_methods[i]]);
+    
+    
 
-    old_string := strreplace(old_str, "\n", "", true);
-    new_string := strreplace(new_str, "\n", "", true);
+    old_str1 := strreplace(old_str, "\n", "", true);
+    new_str1 := strreplace(new_str, "\n", "", true);
+    old_string := strreplace(old_str1, " ", "", true);
+    new_string := strreplace(new_str1, " ", "", true);
 
     delimiter := ";;";
 
@@ -113,7 +117,7 @@ compare_methods := function(rev_num: string, old_map: map[string] of string, new
     {
         # If there's a function call in the old version that doesn't appear in the new version, print it out.
         if(!match_methods(rev_num, old_calls[a], new_calls))
-         changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was removed.", old_calls[a]);
+         changed_methods[format("%s %s", rev_num, common_methods[i])] << format("OUTPUTMethodCallRemoved %s", old_calls[a]);
         else
         {
           old_nInstances := getNumInstances(old_calls[a], old_calls);
@@ -122,7 +126,7 @@ compare_methods := function(rev_num: string, old_map: map[string] of string, new
           new_nInstances := getNumInstances(new_calls[pos_in_new_calls], new_calls);
           if(old_nInstances != new_nInstances)
           {
-            changed_methods[format("%s %s ", rev_num, common_methods[i])] << format("The number of times this method was called changed from %d to %d. %s", old_nInstances, new_nInstances, old_calls[a]);
+            changed_methods[format("%s %s", rev_num, common_methods[i])] << format("OUTPUTMethodNCallsChangedOldToNew %d %d %s", old_nInstances, new_nInstances, old_calls[a]);
           }
         }
          
@@ -132,7 +136,7 @@ compare_methods := function(rev_num: string, old_map: map[string] of string, new
     foreach(b : int; def(new_calls[b]))
     {
        if(!match_methods(rev_num, new_calls[b], old_calls))
-         changed_methods[format("%s %s", rev_num, common_methods[i])] << format("The call %s was added.", new_calls[b]);
+         changed_methods[format("%s %s", rev_num, common_methods[i])] << format("OUTPUTMethodCallAdded %s", new_calls[b]);
     }
 
 
