@@ -33,7 +33,10 @@ public class fileParser
     
     public static void main (String [] args) throws IOException
     {
-        File inFile = new File("input.txt");
+        String inputFile = args[0];
+
+        File inFile = new File (inputFile);
+        
         Set<String> call_Descr_Set = new HashSet<String>();
         
         Scanner sc = new Scanner(inFile);
