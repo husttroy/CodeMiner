@@ -1,0 +1,181 @@
+p: Project = input;
+o: output collection[int] of int;
+ins: output collection[int] of string;
+del: output collection[int] of string;
+
+reverse:= function(s: array of string): array of string
+{
+    l   := len(s);
+    rev := new(s, len(s), "");
+
+     for (i := 0; i < l; i ++)
+         rev[i] = s[l - i - 1];
+
+     return rev;
+};
+
+subarray:= function(s: array of string, low: int, high: int): array of string
+{
+    sub: array of string;
+    sub = new(sub, high - low, "");
+    for (i := 0; i < high - low; i ++)
+        if ( def(s[low + i]) )
+            sub[i] = s[low + i];
+    #else err!
+    return sub;
+};
+subarray_rev:= function(s: array of string, low: int, high: int): array of string
+{
+    sub: array of string;
+    sub = new(sub, high - low, "");
+    for (i := 0; i < high - low; i ++)
+        if ( def(s[low + i]) )
+            sub[i] = s[high - 1 - i];
+    #else err!
+    return sub;
+};
+
+# job/52337
+LCS:= function(x: array of string, y: array of string): array of int
+{
+    m := len(y) + 1;
+
+    cur: int; lu: int; l: int; u: int;
+
+    opt : array of int;
+    opt = new(opt, 2 * m, 0);
+    ret := new(opt, m, 0);
+
+    parity := 0;
+
+    foreach (i:int; def(x[i])) {
+
+        prev: = parity;
+        parity = 1 - parity;
+
+        foreach (j:int; def(y[j])) {
+            cur = parity * m + j + 1;
+            l   = parity * m + j;
+            lu  = prev * m + j;
+            u   = prev * m + j + 1;
+
+            if (x[i] == y[j]) 
+                opt[cur] = opt[lu] + 1;
+            else if (opt[l] > opt[u])
+                opt[cur] = opt[l];
+            else
+                opt[cur] = opt[u];
+        }
+    }
+
+    for (i := 1; i < m; i ++) {
+        cur = parity * m + i;
+        ret[i] = opt[cur];
+    }
+
+    return ret;
+};
+testLCS:= function(){
+    if (match(p.project_url, "https://github.com/fywb251/bsl_impc_android")) {
+        res := LCS(splitall("hello", ""), splitall("hll", ""));
+        foreach (i: int; def(res[i]))
+            o[i] << res[i];
+    }};
+
+
+push_state:= function(state: stack of array of int,
+                      opt: int,
+                      low_x: int, high_x: int, 
+                      low_y: int, high_y: int )
+{
+    a: array of int;
+    a = new(a, 5, 0);
+    a[0] = low_x;
+    a[1] = high_x;
+    a[2] = low_y;
+    a[3] = high_y;
+
+    a[4] = opt;
+    push(state, a);
+};
+
+
+#job/52378 /52372
+align:= function(s1: string, s2: string)
+{
+#initialization
+    x:= splitall(s1, "\n"); y:= splitall(s2, "\n");
+
+    state: stack of array of int;
+
+    low_x: int; 
+    low_y: int;
+    high_x: int;
+    high_y: int;
+    mid_x: int;
+    mid_y: int;
+    opt: int;
+    i: int;
+
+    vec := LCS(x, y);
+    push_state(state, vec[len(y)],
+               0, len(x),  0, len(y) );
+
+    while ( def(peek(state)) ) {
+        a := pop(state);
+
+        low_x = a[0]; high_x = a[1]; 
+        low_y = a[2]; high_y = a[3];
+        opt = a[4];
+
+        mid_x = (low_x + high_x) / 2;
+        mid_y = low_y;
+
+        if (opt == 0) { # base case, insertion
+            for (i = low_y; i < high_y; i ++)
+                ins[i] << y[i];
+            for (i = low_x; i < high_x; i ++)
+                del[i] << x[i];
+        }
+
+        else if (low_x + 1 == high_x) {
+            for (i = low_y; i < high_y; i ++)
+                if (x[low_x] == y[i])
+                    break;
+            for (j:= low_y; j < high_y; j ++)
+                if (j != i)
+                    ins[j] << y[j];
+        }
+
+        else
+        { 
+            vec0 := LCS( subarray(x, low_x, mid_x), subarray(y, low_y, high_y) );
+            vec1 := LCS( subarray_rev(x, mid_x, high_x),
+                         subarray_rev(y, low_y, high_y) );
+
+
+            l := high_y - low_y;
+            for (i = 0; i <= l; i ++) {
+                if (vec0[i] + vec1[l-i] == opt) {
+                    mid_y = low_y + i;
+                    break;
+                }
+            }
+
+
+            push_state(state, vec1[l + low_y - mid_y],
+                       mid_x, high_x, mid_y, high_y);
+
+            push_state(state, vec0[mid_y - low_y],
+                       low_x, mid_x, low_y, mid_y );
+        }
+    }
+};
+
+testalign:= function(){
+    if (match(p.project_url, "https://github.com/fywb251/bsl_impc_android")) {
+        align("ab", "loladotab");
+        # align("hello", "hlla");
+        #align("The Gettysburg Address is a speech by U.S. President Abraham Lincoln, one of the best-known in American history. It was delivered by Lincoln during the American Civil War, on the afternoon of Thursday, November 19, 1863, at the dedication of the Soldiers National Cemetery in Gettysburg, Pennsylvania, four and a half months after the Union armies defeated those of the Confederacy at the Battle of Gettysburg",
+        #"The gettysburg address is a speeach by US President abraham lincoln, one of the best-known in American history. It was delivered by lincoln during the amerian civil war, on the afternoon of thursday noverber 19, 1863, at eh dedication of the soders national cemeery. four and a half months after the union armies defeast those of the confederacy at teh battle of Gettysburg");
+           }};
