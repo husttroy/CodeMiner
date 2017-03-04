@@ -48,116 +48,40 @@ query := function(m: Method) : bool{
     return true;
 };
 
-# takes a method call expression and return a method call sequence in the format of m1.m2.m3...
-get_method_seq := function(expr: Expression) : string {
-    seq: = "";
-    st : stack of string;
-    
-    visit(expr, visitor{
-        before node: Expression -> {
-            switch (node.kind) {
-                case ExpressionKind.METHODCALL:
-                    if (def(node.expressions) && len(node.expressions) == 1) {
-		                if (node.expressions[0].kind == ExpressionKind.VARACCESS || node.expressions[0].kind == ExpressionKind.LITERAL) {
-		                    # This is the first method call in a chain (if any)
-		                    
-		                    # visit arguments first
-		                    if (def(node.method_args)) {
-		                        foreach (i: int; def(node.method_args[i])) {
-		                            visit(node.method_args[i]);
-		                        }
-		                    }
-		    	            
-		    	            # append the first method call
-		    	            if (len(seq) > 0) {
-		    	                seq = format("%s->%s", seq, node.method);
-		    	            } else {
-		    	                seq = node.method;
-		    	            }
-		    	            
-			                # append the rest of method calls in the sequence, if any
-		    	            while (def(peek(st))) {
-			                    # method call sequence			                    
-			                    seq = format("%s->%s", seq, pop(st));
-		    	            }
-			                stop;
-		                } else if (node.expressions[0].kind == ExpressionKind.METHODCALL) {
-		                    # visit arguments first
-		                    if (def(node.method_args)) {
-		                        foreach (i: int; def(node.method_args[i])) {
-		                            visit(node.method_args[i]);
-		                        }
-		                    }
-		                    
-                    	    # this is a sequence of method calls
-			                push(st, node.method);
-			                
-			                # visit the following method call(s)
-			                visit(node.expressions[0]);
-			                stop;
-		                }
-		            } else if (def(node.expressions) && len(node.expressions) == 0) {
-		                # visit arguments first
-		                if (def(node.method_args)) {
-		                    foreach (i: int; def(node.method_args[i])) {
-		                        visit(node.method_args[i]);
-		                    }
-		                }
-		                
-		                # local method call
-		                if (len(seq) > 0) {
-		    	            seq = format("%s->%s", seq, node.method);
-		    	        } else {
-		    	            seq = node.method;
-		    	        }
-		                
-		                # append the rest of method calls in the sequence, if any
-		                while (def(peek(st))) {
-			                # method call sequence
-			                seq = format("%s->%s", seq, pop(st));
-		                }
-		                stop;
-		            }
-		            break;
-		        case ExpressionKind.NEW:
-		            # visit arguments first
-		            if (def(node.expressions)) {
-		                foreach(i: int; def(node.expressions[i])) {
-		                       visit(node.expressions[i]);
-		                }
-		            }
-		            
-		            # constructer is always called first in a chain
-		            if (len(seq) > 0) {
-		                seq = format("%s->new %s", seq, node.new_type.name);
-		            } else {
-		                seq = node.new_type.name;
-		            }
-		            
-		            while (def(peek(st))) {
-		                seq = format("%s->%s", seq, pop(st));
-		            }
-		            
-		            stop;
-                default: break;
-            }
-        }
-    });
-    
-    return seq;
-};
-
 get_predicate := function(expr: Expression) : string {
     cond := "";
-    
+
     visit(expr, visitor{
         before node: Expression -> {
             switch (node.kind) {
                 case ExpressionKind.METHODCALL:
-                    cond = format("%s%s", cond, get_method_seq(node));
+                    if(def(node.expressions) && len(node.expressions) == 1) {
+                        # visit the receiver first
+                        visit(node.expressions[0]);
+                        cond = format("%s.", cond);
+                    }
+                    
+                    cond = format("%s%s(", cond, node.method);
+                    
+                    if (def(node.method_args)) {
+                        # visit argument
+		                foreach (i: int; def(node.method_args[i])) {
+		                    visit(node.method_args[i]);
+		                    cond = format("%s,", cond);
+		                }
+		            }
+		            cond = format("%s)", cond);
 		            stop;
 		        case ExpressionKind.NEW:
-		            cond = format("%s%s", cond, get_method_seq(node));
+		            cond = format("%snew %s(", cond, node.new_type.name);
+		            # visit arguments
+		            if (def(node.expressions)) {
+		                foreach(i: int; def(node.expressions[i])) {
+		                    visit(node.expressions[i]);
+		                    cond = format("%s,", cond);
+		                }
+		            }
+		            cond = format("%s)", cond);
 		            stop;
 		        case ExpressionKind.LOGICAL_NOT:
 		            cond = format("%s!", cond);
