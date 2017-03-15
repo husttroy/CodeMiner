@@ -1,0 +1,317 @@
+p: Project = input;
+o: output collection[string] of int;
+ins: output collection[string] of string;
+del: output collection[string] of string;
+
+
+q_url := "https://github.com/fywb251/bsl_impc_android";
+q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
+old_snapshot: ChangedFile;
+msg: string;
+
+
+reverse:= function(s: array of string): array of string
+{
+    l   := len(s);
+    rev := new(s, len(s), "");
+
+     for (i := 0; i < l; i ++)
+         rev[i] = s[l - i - 1];
+
+     return rev;
+};
+
+subarray:= function(s: array of string, low: int, high: int): array of string
+{
+    sub: array of string;
+    sub = new(sub, high - low, "");
+    for (i := 0; i < high - low; i ++)
+        if ( def(s[low + i]) )
+            sub[i] = s[low + i];
+    #else err!
+    return sub;
+};
+subarray_rev:= function(s: array of string, low: int, high: int): array of string
+{
+    sub: array of string;
+    sub = new(sub, high - low, "");
+    for (i := 0; i < high - low; i ++)
+        if ( def(s[low + i]) )
+            sub[i] = s[high - 1 - i];
+    #else err!
+    return sub;
+};
+
+# job/53277
+ED:= function(x: array of string, y: array of string): array of int
+{
+    m := len(y) + 1;
+
+    cur: int; lu: int; l: int; u: int;
+
+    opt : array of int;
+    opt = new(opt, 2 * m, 0);
+    ret := new(opt, m, 0);
+
+    parity := 0;
+    foreach (i:int; def(y[i]))
+        opt[i + 1] = i + 1;
+
+    foreach (i:int; def(x[i])) {
+
+        prev: = parity;
+        parity = 1 - parity;
+        opt[parity * m] = i + 1;
+
+
+        foreach (j:int; def(y[j])) {
+            cur = parity * m + j + 1;
+            l   = parity * m + j;
+            lu  = prev * m + j;
+            u   = prev * m + j + 1;
+
+    	    if (x[i] == y[j]) 
+    		    opt[cur] = opt[lu];
+    	    else {
+    	        opt[cur] = opt[lu] + 1;
+    	        if (opt[l] + 1 < opt[cur])
+    		        opt[cur] = opt[l] + 1;
+    	        if (opt[u] + 1 < opt[cur])
+    		        opt[cur] = opt[u] + 1;
+    	    }
+    	    
+
+        }
+    }
+
+    for (i := 0; i < m; i ++) {
+        cur = parity * m + i;
+        ret[i] = opt[cur];
+    }
+
+    return ret;
+};
+
+push_state:= function(state: stack of array of int,
+                      opt: int,
+                      low_x: int, high_x: int, 
+                      low_y: int, high_y: int )
+{
+    a: array of int;
+    a = new(a, 5, 0);
+    a[0] = low_x;
+    a[1] = high_x;
+    a[2] = low_y;
+    a[3] = high_y;
+
+    a[4] = opt;
+    push(state, a);
+};
+
+
+align:= function(s1: string, s2: string, outdir: string)
+{
+    x:= splitall(s1, "\n"); y:= splitall(s2, "\n");
+
+    state: stack of array of int;
+
+    low_x: int; 
+    low_y: int;
+    high_x: int;
+    high_y: int;
+    mid_x: int;
+    mid_y: int;
+    opt: int;
+    i: int; j: int;
+    counter:= 0;
+
+    vec := ED(x, y);
+    push_state(state, vec[len(y)],
+               0, len(x),  0, len(y) );
+
+    while ( def(peek(state)) ) {
+        a := pop(state);
+
+        low_x = a[0]; high_x = a[1]; 
+        low_y = a[2]; high_y = a[3];
+        opt = a[4];
+
+        mid_x = (low_x + high_x) / 2;
+        mid_y = low_y;
+        s: = format("x[%d, %d), y(%d %d], opt: %d", low_x, high_x, low_y, high_y, opt);
+        o[s] << 1;
+
+        if (opt > 0) {
+            if (low_x == high_x) {  # deletion
+                for (j = low_y; j < high_y; j ++) {
+                        ins[outdir] << format("@%d, %s", counter, y[j]);
+                        counter = counter + 1;
+                }
+            }
+            
+            else if (low_y == high_y) {  # insertion
+                for (i = low_x; i < high_x; i ++) {
+                        del[outdir] << format("@%d, %s", counter, x[i]);
+                        counter = counter + 1;
+                }
+            }
+            
+            else if (low_x + 1 == high_x) {  #substitution
+                i = -1;
+                if (opt == high_y - low_y) {
+                    del[outdir] << format("@%d, %s", counter, x[low_x]);
+                    ins[outdir] << format("@%d, %s", counter, y[low_y]);
+                    counter = counter + 1;
+                    i = low_y;
+                }
+                else {
+                    for (i = low_y; i < high_y; i ++)
+                        if (x[low_x] == y[i])
+                            break;
+                }
+                for (j = low_y; j < high_y; j ++) 
+                    if (j != i) {
+                        ins[outdir] << format("@%d, %s", counter, y[j]);
+                        counter = counter + 1;
+                    }
+            }
+    
+            else
+            { 
+                vec0 := ED( subarray(x, low_x, mid_x), subarray(y, low_y, high_y) );
+                vec1 := ED( subarray_rev(x, mid_x, high_x),
+                             subarray_rev(y, low_y, high_y) );
+                
+
+    
+                l := high_y - low_y;
+                for (i = 0; i <= l; i ++) {
+                    if (vec0[i] + vec1[l-i] == opt) {
+                        mid_y = low_y + i;
+                        break;
+                    }
+                }
+    
+    
+                push_state(state, vec1[l + low_y - mid_y],
+                           mid_x, high_x, mid_y, high_y);
+    
+                push_state(state, vec0[mid_y - low_y],
+                           low_x, mid_x, low_y, mid_y );
+            }
+        }
+    }
+};
+
+
+getStr:= function(file: ChangedFile): string
+{
+    s: string;
+    info: string;
+
+    visit(file, visitor {
+        before node: Declaration -> {
+            info = format("Declaration (name: %s, kind: %s)", node.name, node.kind);
+            s = format("%s%s { \n", s, info);
+        }
+
+        before node: Method -> {
+            info = format("Method (name: %s)", node.name);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Variable -> {
+            info = format("Variable (name: %s)", node.name);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Statement -> {
+            info = format("Statement (kind: %s)", node.kind);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Expression -> {
+            info = format("Expression (kind: %s, literal: %s, method: %s, variable: %s)", node.kind, node.literal, node.method, node.variable);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Type -> {
+            info = format("Type (%s)", node);
+            info = strreplace(info, "  ", " ", true);
+            info = strreplace(info, "\n", ", ", true);
+            s = format("%s%s\n", s, info);
+            stop;
+        }
+
+        before node: Modifier -> {
+            info = format("Modifier (%s)", node);
+            info = strreplace(info, "  ", " ", true);
+            info = strreplace(info, "\n", ", ", true);
+            s = format("%s%s \n", s, info);
+            stop;
+        }
+
+        after Declaration, Method, Variable, Statement, Expression -> {
+            s = s + "}\n";
+        }
+
+    });
+
+    return s;
+};
+
+
+file_scanner:= function()
+{
+    files : stack of string;
+
+    visit(p, visitor {
+        before node: ChangedFile -> {
+            if (!match(".*java$", node.name))
+                stop;
+
+            if ( (node.kind != FileKind.SOURCE_JAVA_JLS3) &&
+                (node.kind != FileKind.SOURCE_JAVA_JLS2) &&
+                (node.kind != FileKind.SOURCE_JAVA_JLS4) )
+                stop;
+
+            if (node.change == ChangeKind.ADDED) {
+                push(files, node.name);
+            }
+
+            stop;
+        }
+    });
+
+    while ( def(peek(files)) ) {
+        file_name := pop(files);
+
+        visit(p, visitor {
+
+            before node: Revision -> {
+                msg = format("%s", node.log); 
+            }
+
+            before node: ChangedFile -> {
+                if (file_name != node.name)
+                    stop;
+
+
+                if (node.change == ChangeKind.ADDED) {
+                    old_snapshot = node;
+                }
+                else if (node.change == ChangeKind.DELETED) {
+                }
+                else {
+                    name := format("%s.%s", node.name, msg);
+                    align(getStr(old_snapshot), getStr(node), name);
+                    old_snapshot = node;
+                }
+                stop;
+            }
+        });
+    }
+};
+
+if (match(p.project_url, q_url)) 
+    file_sanncer();

@@ -1,0 +1,55 @@
+getStr:= function(file: ChangedFile): string
+{
+    s: string;
+    info: string;
+
+    visit(file, visitor {
+        before node: Declaration -> {
+            info = format("Declaration (name: %s, kind: %s)", node.name, node.kind);
+            s = format("%s%s { \n", s, info);
+        }
+
+        before node: Method -> {
+            info = format("Method (name: %s)", node.name);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Variable -> {
+            info = format("Variable (name: %s)", node.name);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Statement -> {
+            info = format("Statement (kind: %s)", node.kind);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Expression -> {
+            info = format("Expression (kind: %s, literal: %s, method: %s, variable: %s)", node.kind, node.literal, node.method, node.variable);
+            s = format("%s%s {\n", s, info);
+        }
+
+        before node: Type -> {
+            info = format("Type (%s)", node);
+            info = strreplace(info, "  ", " ", true);
+            info = strreplace(info, "\n", ", ", true);
+            s = format("%s%s\n", s, info);
+            stop;
+        }
+
+        before node: Modifier -> {
+            info = format("Modifier (%s)", node);
+            info = strreplace(info, "  ", " ", true);
+            info = strreplace(info, "\n", ", ", true);
+            s = format("%s%s \n", s, info);
+            stop;
+        }
+
+        after Declaration, Method, Variable, Statement, Expression -> {
+            s = s + "}\n";
+        }
+
+    });
+
+    return s;
+};

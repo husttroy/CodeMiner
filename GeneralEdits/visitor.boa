@@ -1,0 +1,51 @@
+file_scanner:= function()
+{
+    files : stack of string;
+
+    visit(p, visitor {
+        before node: ChangedFile -> {
+            if (!match(".*java$", node.name))
+                stop;
+
+            if ( (node.kind != FileKind.SOURCE_JAVA_JLS3) &&
+                (node.kind != FileKind.SOURCE_JAVA_JLS2) &&
+                (node.kind != FileKind.SOURCE_JAVA_JLS4) )
+                stop;
+
+            if (node.change == ChangeKind.ADDED) {
+                push(files, node.name);
+            }
+
+            stop;
+        }
+    });
+
+    while ( def(peek(files)) ) {
+        file_name := pop(files);
+
+        visit(p, visitor {
+
+            before node: Revision -> {
+                msg = format("%s", node.log); 
+            }
+
+            before node: ChangedFile -> {
+                if (file_name != node.name)
+                    stop;
+
+
+                if (node.change == ChangeKind.ADDED) {
+                    old_snapshot = node;
+                }
+                else if (node.change == ChangeKind.DELETED) {
+                }
+                else {
+                    name := format("%s.%s", node.name, msg);
+                    align(getStr(old_snapshot), getStr(node), name);
+                    old_snapshot = node;
+                }
+                stop;
+            }
+        });
+    }
+}
