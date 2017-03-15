@@ -48,4 +48,4 @@ file_scanner:= function()
             }
         });
     }
-}
+};

@@ -2,11 +2,12 @@ p: Project = input;
 o: output collection[string] of int;
 ins: output collection[string] of string;
 del: output collection[string] of string;
+subs: output collection[string] of string;
 
 
 q_url := "https://github.com/fywb251/bsl_impc_android";
 q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
-old_snapshot: ChangedFile;
+old_snapshot: array of string;
 msg: string;
 
 
@@ -109,10 +110,8 @@ push_state:= function(state: stack of array of int,
 };
 
 
-align:= function(s1: string, s2: string, outdir: string)
+align:= function(x: array of string, y: array of string, outdir: string)
 {
-    x:= splitall(s1, "\n"); y:= splitall(s2, "\n");
-
     state: stack of array of int;
 
     low_x: int; 
@@ -159,8 +158,7 @@ align:= function(s1: string, s2: string, outdir: string)
             else if (low_x + 1 == high_x) {  #substitution
                 i = -1;
                 if (opt == high_y - low_y) {
-                    del[outdir] << format("@%d, %s", counter, x[low_x]);
-                    ins[outdir] << format("@%d, %s", counter, y[low_y]);
+                    subs[outdir] << format("@%d, %s -> %s", counter, x[low_x], y[low_y]);
                     counter = counter + 1;
                     i = low_y;
                 }
@@ -204,60 +202,73 @@ align:= function(s1: string, s2: string, outdir: string)
 };
 
 
-getStr:= function(file: ChangedFile): string
+getStr:= function(file: ChangedFile): array of string
 {
     s: string;
     info: string;
+    counter: int;
+    ast: array of string;
 
+    counter = 0;
+    visit(file, visitor {
+        before Declaration, Method, Variable, Statement, Expression -> {counter = counter + 2;}
+        after Type, Modifier -> {counter ++;}
+    });
+
+    emp := "";
+    ast = new(ast, counter, emp);
+
+    counter = 0;
     visit(file, visitor {
         before node: Declaration -> {
-            info = format("Declaration (name: %s, kind: %s)", node.name, node.kind);
-            s = format("%s%s { \n", s, info);
+            ast[counter] = format("Declaration (name: %s, kind: %s) {", node.name, node.kind);
+            counter ++;
         }
 
         before node: Method -> {
-            info = format("Method (name: %s)", node.name);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Method (name: %s) {", node.name);
+            counter ++;
         }
 
         before node: Variable -> {
-            info = format("Variable (name: %s)", node.name);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Variable (name: %s) {", node.name);
+            counter ++;
         }
 
         before node: Statement -> {
-            info = format("Statement (kind: %s)", node.kind);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Statement (kind: %s) {", node.kind);
+            counter ++;
         }
 
         before node: Expression -> {
-            info = format("Expression (kind: %s, literal: %s, method: %s, variable: %s)", node.kind, node.literal, node.method, node.variable);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Expression (kind: %s, literal: %s, method: %s, variable: %s) {", node.kind, node.literal, node.method, node.variable);
+            counter ++;
         }
 
         before node: Type -> {
             info = format("Type (%s)", node);
             info = strreplace(info, "  ", " ", true);
-            info = strreplace(info, "\n", ", ", true);
-            s = format("%s%s\n", s, info);
+            ast[counter] = strreplace(info, "\n", ", ", true);
+            counter ++;
             stop;
         }
 
         before node: Modifier -> {
             info = format("Modifier (%s)", node);
             info = strreplace(info, "  ", " ", true);
-            info = strreplace(info, "\n", ", ", true);
-            s = format("%s%s \n", s, info);
+            ast[counter] = strreplace(info, "\n", ", ", true);
+            counter ++;
             stop;
         }
 
         after Declaration, Method, Variable, Statement, Expression -> {
-            s = s + "}\n";
+            ast[counter] = "}";
+            counter ++;
         }
 
     });
 
-    return s;
+    return ast;
 };
 
 
@@ -298,14 +309,15 @@ file_scanner:= function()
 
 
                 if (node.change == ChangeKind.ADDED) {
-                    old_snapshot = node;
+                    old_snapshot = getStr(node);
                 }
                 else if (node.change == ChangeKind.DELETED) {
                 }
                 else {
                     name := format("%s.%s", node.name, msg);
-                    align(getStr(old_snapshot), getStr(node), name);
-                    old_snapshot = node;
+                    cur_snapshot:= getStr(node);
+                    align(old_snapshot, cur_snapshot, name);
+                    old_snapshot = cur_snapshot;
                 }
                 stop;
             }
@@ -314,4 +326,4 @@ file_scanner:= function()
 };
 
 if (match(p.project_url, q_url)) 
-    file_sanncer();
+    file_scanner();

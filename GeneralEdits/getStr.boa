@@ -1,55 +1,70 @@
-getStr:= function(file: ChangedFile): string
+
+getStr:= function(file: ChangedFile): array of string
 {
     s: string;
     info: string;
+    counter: int;
+    ast: array of string;
 
+    counter = 0;
+    visit(file, visitor {
+        before Declaration, Method, Variable, Statement, Expression -> {counter = counter + 2;}
+        after Type, Modifier -> 
+            {counter ++;}
+    });
+
+    emp := "";
+    ast = new(ast, counter, emp);
+
+    counter = 0;
     visit(file, visitor {
         before node: Declaration -> {
-            info = format("Declaration (name: %s, kind: %s)", node.name, node.kind);
-            s = format("%s%s { \n", s, info);
+            ast[counter] = format("Declaration (name: %s, kind: %s) {", node.name, node.kind);
+            counter ++;
         }
 
         before node: Method -> {
-            info = format("Method (name: %s)", node.name);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Method (name: %s) {", node.name);
+            counter ++;
         }
 
         before node: Variable -> {
-            info = format("Variable (name: %s)", node.name);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Variable (name: %s) {", node.name);
+            counter ++;
         }
 
         before node: Statement -> {
-            info = format("Statement (kind: %s)", node.kind);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Statement (kind: %s) {", node.kind);
+            counter ++;
         }
 
         before node: Expression -> {
-            info = format("Expression (kind: %s, literal: %s, method: %s, variable: %s)", node.kind, node.literal, node.method, node.variable);
-            s = format("%s%s {\n", s, info);
+            ast[counter] = format("Expression (kind: %s, literal: %s, method: %s, variable: %s)", node.kind, node.literal, node.method, node.variable);
+            counter ++;
         }
 
         before node: Type -> {
             info = format("Type (%s)", node);
             info = strreplace(info, "  ", " ", true);
-            info = strreplace(info, "\n", ", ", true);
-            s = format("%s%s\n", s, info);
+            ast[counter] = strreplace(info, "\n", ", ", true);
+            counter ++;
             stop;
         }
 
         before node: Modifier -> {
             info = format("Modifier (%s)", node);
             info = strreplace(info, "  ", " ", true);
-            info = strreplace(info, "\n", ", ", true);
-            s = format("%s%s \n", s, info);
+            ast[counter] = strreplace(info, "\n", ", ", true);
+            counter ++;
             stop;
         }
 
         after Declaration, Method, Variable, Statement, Expression -> {
-            s = s + "}\n";
+            ast[counter] = "}";
+            counter ++;
         }
 
     });
 
-    return s;
+    return ast;
 };
