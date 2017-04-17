@@ -1,0 +1,97 @@
+# New version of method_changes that also gets the line numbers.
+
+p: Project = input;
+changed_methods: output collection[string] of string;
+
+#######
+#Global Variables
+
+# Repo of interest
+q_url := "https://github.com/fywb251/bsl_impc_android";
+q_file := "cube-android/src/com/foreveross/chameleon/pad/fragment/ChatRoomFragment.java";
+
+revision : string;
+
+# Merge revisions (merging from branches) cause problems with Boa's differencing
+merge_filter := "merge";
+
+#The current parent method
+curr_method : string;
+
+#Simulate relative "line number" within each declaration using statement nodes
+line_number := 0;
+
+
+
+
+#######
+# Function Declarations
+
+traverse_statement := function(statement: Statement)
+{
+	visit(statement, visitor{
+		before node: Expression -> {
+			 if(node.kind == ExpressionKind.METHODCALL)
+			 {
+			 	node_string := strreplace(strreplace(lowercase(format("%s", node)), " ", "", true), "\n", "", true);
+			 	if(len(node_string) < 1000)
+			 	{
+			 		changed_methods[format("%s %s %d", revision, curr_method, line_number)] << node_string;
+			 	}
+			 }
+		}
+	});
+};
+
+traverse_methods := function(methods: ASTRoot)
+{
+	visit(methods, visitor{
+		before node: Method -> {
+			curr_method = node.name;
+			# Most method's statements just contains one statement of type BLOCK, which contains the rest of the statements
+			statement_block := node.statements[0];
+			if(statement_block.kind == StatementKind.BLOCK)
+			{
+				foreach(i: int; def(statement_block.statements[i]))
+				{
+					# The statement number is 0 based, which is counterintuitive if we're trying to represent line numbers. 
+					line_number = i + 1;
+					traverse_statement(statement_block.statements[i]);
+				}
+			}
+			else
+			{
+				# Boa sorts output alphabetically, so AAA will help put error messages at the front.
+				changed_methods[format("AAA ERROR: The Method %s in Revision %s did not just contain a statement block", curr_method, revision)] << "Error";
+
+			}
+		}
+	});
+};
+
+
+
+
+
+
+#######
+visit(p, visitor {
+	before node: CodeRepository -> {
+		if(!match(p.project_url, q_url))
+		stop;
+	}
+	before node: Revision -> {
+		if (match(merge_filter, lowercase(node.log)))
+		{
+			stop;
+		}
+		revision = node.id;
+	}
+	before node: ChangedFile-> {
+		# Don't want to consider other files (eg Error (non-compiling) files)
+		if (match(node.name, q_file) && ((node.kind == FileKind.SOURCE_JAVA_JLS3) || (node.kind == FileKind.SOURCE_JAVA_JLS2) || (node.kind == FileKind.SOURCE_JAVA_JLS4) ))
+		{
+	        traverse_methods(getast(node));
+		}	
+	}
+});
