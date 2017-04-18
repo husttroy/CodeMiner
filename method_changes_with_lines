@@ -36,7 +36,19 @@ traverse_statement := function(statement: Statement)
 			 	node_string := strreplace(strreplace(lowercase(format("%s", node)), " ", "", true), "\n", "", true);
 			 	if(len(node_string) < 1000)
 			 	{
-			 		changed_methods[format("%s %s %d", revision, curr_method, line_number)] << node_string;
+			 		# Keeping the output sorted in the correct order. This way, 9, printed as 009, will come before 10, printed as 010, and 99, printed as 099, will come before 100.
+			 		if(line_number < 10)
+			 		{
+			 			changed_methods[format("%s %s 00%d", revision, curr_method, line_number)] << node_string;
+			 		}
+			 		else if(line_number < 100)
+			 		{
+			 			changed_methods[format("%s %s 0%d", revision, curr_method, line_number)] << node_string;
+			 		}
+			 		else
+			 		{
+			 			changed_methods[format("%s %s %d", revision, curr_method, line_number)] << node_string;
+			 		}
 			 	}
 			 }
 		}
